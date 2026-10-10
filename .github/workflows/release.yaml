@@ -29,6 +29,9 @@ permissions:
 env:
   HELM_VERSION: v3.17.3
   YQ_VERSION: v4.52.5
+  # Written to the root of gh-pages when the branch is created. With "Deploy from a branch",
+  # GitHub keeps the custom domain in that file, so a gh-pages without it would lose the domain.
+  PAGES_DOMAIN: charts.molesignal.com
 
 jobs:
   release:
@@ -50,7 +53,9 @@ jobs:
           else
             git switch --orphan gh-pages
             printf '# MoleSignal Helm repository\n\nThis branch holds the chart index; see the main branch.\n' > README.md
-            git add README.md
+            printf '%s\n' "${PAGES_DOMAIN}" > CNAME
+            touch .nojekyll
+            git add README.md CNAME .nojekyll
             git commit -m "Initialise the Helm repository branch"
             git push origin gh-pages
             git switch -

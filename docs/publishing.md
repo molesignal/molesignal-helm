@@ -45,7 +45,11 @@ GitHub organization or repository.
    which creates the `gh-pages` branch, the GitHub release `molesignal-0.1.0` and the package on ghcr.io.
 4. **Switch on GitHub Pages.** *Settings → Pages → Build and deployment → Source: Deploy from a
    branch → `gh-pages` / `/ (root)`*. After a minute
-   `https://molesignal.github.io/molesignal-helm/index.yaml` lists the chart.
+   `https://molesignal.github.io/molesignal-helm/index.yaml` lists the chart. (If Pages was switched
+   on earlier with `main` as the source, GitHub committed a `CNAME` file to `main`. That is
+   harmless, but while `main` is the source the repository itself is what gets published; change the
+   source as soon as `gh-pages` exists. The release workflow puts the same `CNAME`, and a
+   `.nojekyll`, on `gh-pages` when it creates it, so the domain survives the switch.)
 5. **Make the package public.** A package pushed by a workflow starts out private. In the
    organization: *Packages → `charts/molesignal` → Package settings → Change visibility →
    Public*. Until then `helm pull` needs a login.
@@ -73,6 +77,35 @@ Every later release is just a merged pull request that bumps the chart version
 3. **Hardening (recommended).** Verify `molesignal.com` for the organization (*Organization
    settings → Pages → Add a domain*) so that nobody else can claim a subdomain you have
    removed.
+
+### If the domain check does not pass
+
+GitHub says "DNS check unsuccessful" when *its* resolver cannot see the record, and a resolver
+that asked before the record existed keeps answering "no such domain" until the negative answer
+expires. For a zone on Cloudflare that is the SOA's last field, 1800 seconds. So after creating the
+record: leave it alone for half an hour (deleting and re-adding it only restarts the wait), then
+press *Check again*. To see what GitHub sees, ask it:
+
+```bash
+gh api repos/molesignal/molesignal-helm/pages/health
+```
+
+`dns_resolves`, `is_valid` and `is_cname_to_github_user_domain` should be `true` and `is_proxied`
+`false`. `https_error: peer_failed_verification` with `is_https_eligible: true` only means the
+certificate has not been issued yet; "Enforce HTTPS" stays greyed out until it is, usually within an
+hour. What the rest of the internet sees, independent of any local DNS tool or proxy (some of them
+rewrite answers to the reserved `198.18.0.0/15` range):
+
+```bash
+curl -s 'https://cloudflare-dns.com/dns-query?name=charts.molesignal.com&type=CNAME' -H 'accept: application/dns-json'
+```
+
+It should answer `molesignal.github.io.`. If the record is shown with the orange cloud in
+Cloudflare, switch it to *DNS only*. A `CAA` record on the zone must allow `letsencrypt.org`.
+
+Verifying the domain for the organization (step 3 above) is a separate check with its own TXT
+record, `_github-pages-challenge-molesignal` on `molesignal.com`, whose value GitHub shows you. It is
+not needed for the chart to work.
 
 The chart archives themselves stay on the GitHub releases (`index.yaml` points at them), so
 downloads keep working whatever happens to the domain. Only the address people type depends on it.
