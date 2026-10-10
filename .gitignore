@@ -1,0 +1,21 @@
+# Build and release output
+dist/
+.cr-release-packages/
+.cr-index/
+*.tgz
+
+# Python caches from the tests
+__pycache__/
+*.pyc
+
+# Local values and secrets: never commit these
+values.local.yaml
+*.local.yaml
+.env
+.env.*
+
+# OS and editor files
+.DS_Store
+.idea/
+.vscode/
+*.swp
