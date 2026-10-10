@@ -1,0 +1,14 @@
+# chart-testing (ct) configuration; see .github/workflows/lint-test.yaml.
+remote: origin
+target-branch: main
+chart-dirs:
+  - charts
+lint-conf: lintconf.yaml
+# Every chart change must come with a new chart version: the chart is versioned
+# on its own (docs/versioning.md), and a published version never changes.
+check-version-increment: true
+validate-maintainers: false
+validate-chart-schema: true
+validate-yaml: true
+# Installs pull four images and start up to eight pods; give them room.
+helm-extra-args: --timeout 600s

@@ -1,0 +1,99 @@
+# Publishes the chart when a new chart version lands on main.
+#
+# Two places, same package:
+#   * GitHub Pages, as a classic Helm repository   helm repo add molesignal https://molesignal.github.io/molesignal-helm
+#   * GHCR, as an OCI artifact                     oci://ghcr.io/molesignal/charts/molesignal
+#
+# A version is published once and never rewritten: bump `version` in Chart.yaml to
+# release. See docs/publishing.md for the one-time repository setup.
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - charts/**
+      - cr.yaml
+      - .github/workflows/release.yaml
+  workflow_dispatch:
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write   # GitHub release + the gh-pages branch
+  packages: write   # the OCI artifact on ghcr.io
+
+env:
+  HELM_VERSION: v3.17.3
+  YQ_VERSION: v4.52.5
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Make sure the gh-pages branch exists
+        run: |
+          if git ls-remote --exit-code --heads origin gh-pages >/dev/null 2>&1; then
+            echo "gh-pages exists"
+          else
+            git switch --orphan gh-pages
+            printf '# MoleSignal Helm repository\n\nThis branch holds the chart index; see the main branch.\n' > README.md
+            git add README.md
+            git commit -m "Initialise the Helm repository branch"
+            git push origin gh-pages
+            git switch -
+          fi
+
+      - uses: azure/setup-helm@v5
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      - name: Publish to GitHub Pages
+        uses: helm/chart-releaser-action@v1.7.0
+        with:
+          config: cr.yaml
+          skip_existing: true
+        env:
+          CR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install yq
+        run: |
+          sudo curl -fsSL -o /usr/local/bin/yq \
+            "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64"
+          sudo chmod +x /usr/local/bin/yq
+
+      - name: Publish to GHCR (OCI)
+        env:
+          OWNER: ${{ github.repository_owner }}
+          ACTOR: ${{ github.actor }}
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          owner="$(echo "${OWNER}" | tr '[:upper:]' '[:lower:]')"
+          echo "${TOKEN}" | helm registry login ghcr.io --username "${ACTOR}" --password-stdin
+
+          mkdir -p dist probe
+          for chart in charts/*/; do
+            helm package "${chart}" --destination dist
+          done
+
+          for package in dist/*.tgz; do
+            name="$(helm show chart "${package}" | yq '.name')"
+            version="$(helm show chart "${package}" | yq '.version')"
+            if helm pull "oci://ghcr.io/${owner}/charts/${name}" --version "${version}" --destination probe >/dev/null 2>&1; then
+              echo "${name} ${version} is already on ghcr.io; leaving it alone"
+            else
+              helm push "${package}" "oci://ghcr.io/${owner}/charts"
+            fi
+          done
