@@ -14,7 +14,7 @@ The chart is versioned on its own, apart from the application: see [versioning](
 ## Install
 
 ```bash
-helm repo add molesignal https://molesignal.github.io/molesignal-helm
+helm repo add molesignal https://charts.molesignal.com
 helm repo update
 
 # One MoleSignal pod plus a bundled PostgreSQL and RustFS, enough to try it out

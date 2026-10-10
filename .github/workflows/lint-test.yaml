@@ -69,7 +69,7 @@ jobs:
       - name: Validate rendered manifests against the Kubernetes schemas
         run: |
           set -euo pipefail
-          for k8s in 1.25.0 1.30.0; do
+          for k8s in 1.27.0 1.31.0; do
             for values in "" charts/molesignal/ci/*.yaml examples/*.yaml; do
               echo "==> Kubernetes ${k8s}, values: ${values:-defaults}"
               helm template check charts/molesignal --namespace check \

@@ -12,7 +12,7 @@ The chart has its own version, separate from the application's (see
 ## TL;DR
 
 ```bash
-helm repo add molesignal https://molesignal.github.io/molesignal-helm
+helm repo add molesignal https://charts.molesignal.com
 helm repo update
 
 # One MoleSignal pod plus a bundled PostgreSQL and RustFS: enough to try it out.
@@ -34,7 +34,7 @@ helm install molesignal oci://ghcr.io/molesignal/charts/molesignal --version 0.1
 
 ## Requirements
 
-- Kubernetes 1.25 or later and Helm 3.8 or later (3.8 for OCI).
+- Kubernetes 1.27 or later and Helm 3.8 or later (3.8 for OCI).
 - A default `StorageClass`, or one named in the values, for the write-ahead log and the
   bundled services (or switch persistence off for a throw-away install).
 - For production: a PostgreSQL 17 database and an S3-compatible bucket.

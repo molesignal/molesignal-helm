@@ -1,7 +1,8 @@
 # Publishes the chart when a new chart version lands on main.
 #
 # Two places, same package:
-#   * GitHub Pages, as a classic Helm repository   helm repo add molesignal https://molesignal.github.io/molesignal-helm
+#   * GitHub Pages, as a classic Helm repository   helm repo add molesignal https://charts.molesignal.com
+#     (the same index is at https://molesignal.github.io/molesignal-helm until the domain is set up)
 #   * GHCR, as an OCI artifact                     oci://ghcr.io/molesignal/charts/molesignal
 #
 # A version is published once and never rewritten: bump `version` in Chart.yaml to

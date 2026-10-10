@@ -14,7 +14,7 @@ Chart 的版本独立于应用版本，规则见 [版本策略](docs/versioning.
 ## 安装
 
 ```bash
-helm repo add molesignal https://molesignal.github.io/molesignal-helm
+helm repo add molesignal https://charts.molesignal.com
 helm repo update
 
 # 一个 MoleSignal Pod，外加内置的 PostgreSQL 和 RustFS，足够体验
