@@ -1,0 +1,14 @@
+# Pulling every image through a mirror or an internal registry (air-gapped
+# clusters, or regions where ghcr.io and Docker Hub are slow or blocked).
+#
+# `global.imageRegistry` replaces the registry host and keeps the path, so mirror
+#   ghcr.io/molesignal/molesignal            -> registry.example.com/molesignal/molesignal
+#   postgres                                 -> registry.example.com/postgres
+#   rustfs/rustfs                            -> registry.example.com/rustfs/rustfs
+#   public.ecr.aws/aws-cli/aws-cli           -> registry.example.com/aws-cli/aws-cli
+# or set each `*.image.repository` yourself when your mirror lays paths out differently.
+
+global:
+  imageRegistry: registry.example.com
+  imagePullSecrets:
+    - name: registry-credentials

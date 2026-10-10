@@ -1,0 +1,23 @@
+# Evaluation-sized MoleSignal that keeps its data in AWS S3 and its metadata in a
+# PostgreSQL you already have (for example RDS). Leave `endpoint` empty for AWS S3.
+#
+#   kubectl create secret generic molesignal-s3 \
+#     --from-literal=access-key=AKIA... --from-literal=secret-key=...
+#
+# Omit `existingSecret` (and the keys) altogether to run without static credentials;
+# whether the application then finds credentials depends on the environment, for
+# example an EC2 instance profile on the node.
+
+postgresql:
+  enabled: false
+externalDatabase:
+  dsn: postgres://molesignal:change-me@molesignal.abc123.eu-west-1.rds.amazonaws.com:5432/molesignal?sslmode=require
+
+rustfs:
+  enabled: false
+objectStore:
+  bucket: example-molesignal-data
+  region: eu-west-1
+  endpoint: ""
+  pathStyle: false
+  existingSecret: molesignal-s3

@@ -1,0 +1,115 @@
+# A starting point for production: every role on its own workload, a managed
+# PostgreSQL and an S3 bucket instead of the bundled evaluation services, credentials
+# in Secrets you manage, TLS, autoscaling and disruption budgets.
+#
+#   helm install molesignal molesignal/molesignal --namespace molesignal \
+#     --create-namespace --values production.yaml
+#
+# Create the secrets first (names below are examples):
+#
+#   kubectl -n molesignal create secret generic molesignal-core \
+#     --from-literal=cipher-key="$(openssl rand -base64 32)" \
+#     --from-literal=cluster-token="$(openssl rand -base64 36)"
+#   kubectl -n molesignal create secret generic molesignal-db \
+#     --from-literal=database-dsn='postgres://molesignal:...@db.internal:5432/molesignal?sslmode=require'
+#   kubectl -n molesignal create secret generic molesignal-s3 \
+#     --from-literal=access-key=... --from-literal=secret-key=...
+#
+# Keep a copy of the cipher key somewhere safe: without it, encrypted fields cannot
+# be read again.
+
+mode: distributed
+releaseChannel: stable
+externalUrl: https://observability.example.com
+
+secrets:
+  existingSecret: molesignal-core
+
+postgresql:
+  enabled: false
+externalDatabase:
+  existingSecret: molesignal-db
+
+rustfs:
+  enabled: false
+objectStore:
+  bucket: example-telemetry
+  region: eu-west-1
+  existingSecret: molesignal-s3
+
+# Spread every role over the zones. The chart adds no selector, so name the labels.
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: topology.kubernetes.io/zone
+    whenUnsatisfiable: ScheduleAnyway
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/instance: molesignal
+
+# Size these from your own load; they are only a shape.
+router:
+  replicaCount: 3
+  resources:
+    requests: {cpu: 500m, memory: 512Mi}
+    limits: {memory: 1Gi}
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 12
+  podDisruptionBudget:
+    enabled: true
+    maxUnavailable: 1
+intake:
+  replicaCount: 3
+  resources:
+    requests: {cpu: "1", memory: 2Gi}
+    limits: {memory: 3Gi}
+  persistence:
+    size: 100Gi
+    storageClass: fast-ssd
+  podDisruptionBudget:
+    enabled: true
+    maxUnavailable: 1
+querier:
+  replicaCount: 3
+  resources:
+    requests: {cpu: "1", memory: 2Gi}
+    limits: {memory: 4Gi}
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 12
+  podDisruptionBudget:
+    enabled: true
+    maxUnavailable: 1
+compactor:
+  replicaCount: 2
+  resources:
+    requests: {cpu: 500m, memory: 1Gi}
+alert:
+  replicaCount: 2
+  resources:
+    requests: {cpu: 500m, memory: 1Gi}
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+  hosts:
+    - host: observability.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: observability-tls
+      hosts:
+        - observability.example.com
+
+# Settings of the application itself (see conf/config.toml in the application repository).
+config:
+  compactor:
+    retention_days: 30
