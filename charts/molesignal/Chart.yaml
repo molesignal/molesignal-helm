@@ -1,0 +1,64 @@
+apiVersion: v2
+name: molesignal
+description: >-
+  Self-hosted, OpenTelemetry-native observability. Logs, metrics and traces on
+  one Parquet / DataFusion engine, with PostgreSQL for metadata and any
+  S3-compatible object store for data.
+type: application
+
+# The chart is versioned on its own (SemVer) and released independently of the
+# application. Bump `version` for every chart change. `appVersion` is the default
+# image tag, and that is `latest`: the chart follows the application's newest image
+# rather than a pinned release. See docs/versioning.md.
+version: 0.1.0
+appVersion: "latest"
+
+kubeVersion: ">=1.27.0-0"
+
+home: https://www.molesignal.com
+icon: https://www.molesignal.com/icon-512.png
+# The first entry becomes the `org.opencontainers.image.source` label of the OCI
+# artifact, which is what ties the package on ghcr.io to this repository.
+sources:
+  - https://github.com/molesignal/molesignal-helm
+  - https://github.com/molesignal/molesignal
+keywords:
+  - observability
+  - opentelemetry
+  - otlp
+  - logs
+  - metrics
+  - traces
+  - apm
+  - monitoring
+maintainers:
+  - name: MoleSignal
+    url: https://github.com/molesignal
+
+annotations:
+  artifacthub.io/category: monitoring-logging
+  artifacthub.io/license: Apache-2.0
+  artifacthub.io/containsSecurityUpdates: "false"
+  artifacthub.io/prerelease: "true"
+  artifacthub.io/images: |
+    - name: molesignal
+      image: ghcr.io/molesignal/molesignal:latest
+      platforms:
+        - linux/amd64
+        - linux/arm64
+    - name: postgresql
+      image: postgres:17
+    - name: rustfs
+      image: rustfs/rustfs:latest
+    - name: aws-cli
+      image: public.ecr.aws/aws-cli/aws-cli:latest
+  artifacthub.io/links: |
+    - name: Documentation
+      url: https://github.com/molesignal/molesignal-helm/tree/main/docs
+    - name: Application
+      url: https://github.com/molesignal/molesignal
+  artifacthub.io/changes: |
+    - kind: added
+      description: Initial release of the chart, with standalone and distributed modes
+    - kind: added
+      description: Optional bundled PostgreSQL and RustFS for evaluation

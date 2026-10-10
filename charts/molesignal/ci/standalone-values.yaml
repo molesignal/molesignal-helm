@@ -1,0 +1,11 @@
+# Installed by chart-testing on a throw-away kind cluster: the default topology with
+# the bundled PostgreSQL and RustFS, on small volumes.
+postgresql:
+  persistence:
+    size: 1Gi
+rustfs:
+  persistence:
+    size: 1Gi
+standalone:
+  persistence:
+    size: 1Gi

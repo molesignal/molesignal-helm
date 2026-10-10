@@ -1,0 +1,35 @@
+{{- /*
+`helm test <release>`: checks that the HTTP API answers through the Service. It runs
+in the application image, which ships curl, so no extra image is pulled.
+*/ -}}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "molesignal.fullname" . }}-test-connection
+  labels:
+    {{- include "molesignal.labels" (dict "ctx" . "component" "test") | nindent 4 }}
+  annotations:
+    helm.sh/hook: test
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  {{- with include "molesignal.imagePullSecrets" . }}
+  imagePullSecrets:
+    {{- . | nindent 4 }}
+  {{- end }}
+  containers:
+    - name: curl
+      image: {{ include "molesignal.image" . }}
+      imagePullPolicy: {{ .Values.image.pullPolicy }}
+      command: ["curl"]
+      args:
+        - --fail
+        - --silent
+        - --show-error
+        - --retry
+        - "10"
+        - --retry-delay
+        - "3"
+        - --retry-connrefused
+        - {{ printf "http://%s:%d/api/v1/healthz" (include "molesignal.frontService" .) (include "molesignal.port" (dict "ctx" . "name" "http") | int) | quote }}

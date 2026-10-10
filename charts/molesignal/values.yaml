@@ -1,0 +1,591 @@
+# Default values for the molesignal chart.
+#
+# Comments that start with `# --` document the key below them and feed the
+# generated table in README.md (see scripts/gen-values-doc.py).
+#
+# The defaults give you a working evaluation install: one MoleSignal pod plus a
+# bundled PostgreSQL and a bundled RustFS (S3-compatible object store). For
+# production, switch `mode` to `distributed`, turn both bundled services off and
+# point the chart at managed ones — see examples/production.yaml.
+
+global:
+  # -- Replace the registry host of every image the chart deploys (mirror or
+  # air-gapped registry). `ghcr.io/molesignal/molesignal` becomes
+  # `<imageRegistry>/molesignal/molesignal`.
+  imageRegistry: ""
+  # -- Pull secrets for every pod the chart creates. Merged with `imagePullSecrets`.
+  imagePullSecrets: []
+
+# -- Override the chart name used in resource names and labels.
+nameOverride: ""
+# -- Override the prefix of every resource name (default: the release name).
+# Kept to 43 characters so that suffixes such as `-postgresql` still fit.
+fullnameOverride: ""
+# -- Labels added to every resource.
+commonLabels: {}
+# -- Annotations added to every resource.
+commonAnnotations: {}
+
+# -- Deployment topology.
+# `standalone` runs every role in one StatefulSet (what `docker compose up`
+# does). `distributed` runs router, intake, querier, compactor and alert as
+# separate workloads that scale independently.
+mode: standalone
+
+image:
+  # -- Application image. One image serves every role.
+  repository: ghcr.io/molesignal/molesignal
+  # -- Image tag. Empty means the chart's `appVersion`, which is `latest`. That tag
+  # moves: pin a version (or `digest`) for anything but trying the chart out.
+  tag: ""
+  # -- Image digest (`sha256:...`). When set it is used together with the tag.
+  digest: ""
+  # -- Image pull policy. `Always`, because the default tag moves; use
+  # `IfNotPresent` once you pin one.
+  pullPolicy: Always
+# -- Pull secrets, as a list of `{name: ...}`.
+imagePullSecrets: []
+
+# -- Runtime delivery channel, exposed to the application as `RELEASE_CHANNEL`.
+# One of `alpha`, `beta`, `rc`, `stable`. It is metadata only: promoting a build
+# through channels does not change the image, just this value.
+releaseChannel: alpha
+
+logging:
+  # -- Log filter, in `tracing` env-filter syntax.
+  level: "info,tantivy=warn"
+  # -- Log format: `json` or `text`.
+  format: json
+
+# -- Public URL of the UI, for example `https://molesignal.example.com`.
+# Shown in the data-source setup pages and used as the CNAME target for status
+# pages. Empty derives it from the first `ingress.hosts` entry when the ingress
+# is enabled.
+externalUrl: ""
+
+# -- Extra application settings, merged over the chart's own and written to
+# `config.toml`. Mirrors the TOML layout of the application's `conf/config.toml`:
+# a key `compactor.retention_days` becomes `[compactor] retention_days = ...`.
+# Values set here win over the keys the chart derives from its other values
+# (`wal.dir`, `object_store.*`, `telemetry.*`, `http.external_url`,
+# `scheduled_reports.renderer.base_url`). Unknown keys can stop the application
+# from starting; check the reference file shipped with the application.
+config: {}
+#   compactor:
+#     retention_days: 90
+#   cache:
+#     object:
+#       max_bytes: 5368709120
+
+# -- Extra environment variables for every MoleSignal container. Any setting can
+# also be given as `MS_<SECTION>_<KEY>` (for example `MS_COMPACTOR_RETENTION_DAYS`);
+# environment variables win over `config.toml`.
+extraEnv: []
+# -- Extra `envFrom` sources for every MoleSignal container.
+extraEnvFrom: []
+# -- Extra volumes for every MoleSignal pod.
+extraVolumes: []
+# -- Extra volume mounts for every MoleSignal container.
+extraVolumeMounts: []
+
+# -- Annotations added to every MoleSignal pod.
+podAnnotations: {}
+# -- Labels added to every MoleSignal pod.
+podLabels: {}
+# -- Pod security context for every MoleSignal pod. Empty keeps the image
+# defaults (the application image runs as root).
+podSecurityContext: {}
+# -- Container security context for every MoleSignal container.
+securityContext: {}
+# -- Node selector for every MoleSignal pod. A role can override it with its own
+# `nodeSelector`; role values replace these, they are not merged.
+nodeSelector: {}
+# -- Tolerations for every MoleSignal pod (a role can override).
+tolerations: []
+# -- Affinity for every MoleSignal pod (a role can override).
+affinity: {}
+# -- Topology spread constraints for every MoleSignal pod (a role can override).
+# The chart does not add the label selector for you; use
+# `app.kubernetes.io/instance` and `app.kubernetes.io/component`.
+topologySpreadConstraints: []
+# -- Priority class for every MoleSignal pod (a role can override).
+priorityClassName: ""
+
+serviceAccount:
+  # -- Create a service account.
+  create: true
+  # -- Name of the service account. Defaults to the full name.
+  name: ""
+  # -- Annotations for the service account.
+  annotations: {}
+  # -- Mount the service account token into the pods. The application does not
+  # call the Kubernetes API, so it is off by default.
+  automount: false
+
+secrets:
+  # -- Use your own Secret for the cipher key, cluster token and JWT override
+  # instead of the one the chart generates. See `secrets.keys` for the key names.
+  existingSecret: ""
+  keys:
+    # -- Key holding the field-level encryption root key (32 bytes, base64).
+    cipherKey: cipher-key
+    # -- Key holding the shared token that authenticates node-to-node trace and
+    # telemetry forwarding.
+    clusterToken: cluster-token
+    # -- Key holding the optional JWT signing secret override.
+    jwtSecretOverride: jwt-secret-override
+  # -- Field-level encryption root key: 32 random bytes, base64 encoded
+  # (`openssl rand -base64 32`). Generated on first install when empty and kept
+  # on upgrades. **Back it up and keep it for the life of the data**: losing it
+  # makes encrypted fields unreadable. Set it explicitly when you render with
+  # `helm template` (Argo CD, Flux with post-render), because values generated at
+  # render time are not stable there.
+  cipherKey: ""
+  # -- Shared token for node-to-node forwarding. Generated when empty.
+  clusterToken: ""
+  # -- Pin the JWT signing secret. Leave empty: the application generates one on
+  # first start and keeps it in the database. Set it (>= 32 bytes, base64) only to
+  # share one secret across clusters.
+  jwtSecretOverride: ""
+
+postgresql:
+  # -- Deploy a single PostgreSQL instance with the chart. **For evaluation
+  # only**: one replica, no backups, no failover. Turn it off and use
+  # `externalDatabase` in production.
+  enabled: true
+  image:
+    # -- PostgreSQL image.
+    repository: postgres
+    # -- PostgreSQL image tag. MoleSignal is developed against PostgreSQL 17.
+    tag: "17"
+    # -- Image digest.
+    digest: ""
+    # -- Image pull policy.
+    pullPolicy: IfNotPresent
+  auth:
+    # -- Database user. Letters, digits and underscores only.
+    username: molesignal
+    # -- Database name. Letters, digits and underscores only.
+    database: molesignal
+    # -- Password of the database user. Generated when empty and kept on upgrades.
+    # Must use only URL-safe characters (letters, digits, `-._~`) because it is
+    # embedded in the connection string.
+    password: ""
+    # -- Use an existing Secret for the password (same URL-safe rule).
+    existingSecret: ""
+    # -- Key of the password inside `existingSecret` (the generated Secret uses it too).
+    secretKey: password
+  # -- `max_connections`. Every MoleSignal process keeps its own pool (16 by
+  # default), so a distributed install needs well above PostgreSQL's default of 100.
+  maxConnections: 200
+  # -- Additional server flags, for example `["-c", "shared_buffers=512MB"]`.
+  extraArgs: []
+  persistence:
+    # -- Keep data on a PersistentVolumeClaim. When false an `emptyDir` is used
+    # and data is lost whenever the pod restarts.
+    enabled: true
+    # -- Volume size.
+    size: 10Gi
+    # -- Storage class. Empty uses the cluster default.
+    storageClass: ""
+    # -- Access modes.
+    accessModes:
+      - ReadWriteOnce
+  # -- Resource requests and limits.
+  resources: {}
+  # -- Pod security context. The official image runs as uid/gid 999.
+  podSecurityContext:
+    fsGroup: 999
+    fsGroupChangePolicy: OnRootMismatch
+  # -- Container security context.
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 999
+    runAsGroup: 999
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+    seccompProfile:
+      type: RuntimeDefault
+  service:
+    # -- Service type.
+    type: ClusterIP
+    # -- Service annotations.
+    annotations: {}
+  # -- Pod annotations.
+  podAnnotations: {}
+  # -- Node selector.
+  nodeSelector: {}
+  # -- Tolerations.
+  tolerations: []
+  # -- Affinity.
+  affinity: {}
+  # -- Priority class.
+  priorityClassName: ""
+
+externalDatabase:
+  # -- Connection string of an external PostgreSQL, for example
+  # `postgres://molesignal:secret@db.example.com:5432/molesignal?sslmode=require`.
+  # Used when `postgresql.enabled` is false. Stored in a Secret created by the chart.
+  dsn: ""
+  # -- Use an existing Secret that holds the connection string instead of `dsn`.
+  existingSecret: ""
+  # -- Key of the connection string inside `existingSecret`.
+  existingSecretKey: database-dsn
+
+rustfs:
+  # -- Deploy a single RustFS instance (S3-compatible object store) and create
+  # the bucket in it. **For evaluation only**: one replica, no redundancy. Turn it
+  # off and use `objectStore` with S3 or a managed store in production.
+  enabled: true
+  image:
+    # -- RustFS image.
+    repository: rustfs/rustfs
+    # -- RustFS image tag. `latest` moves: pin one for anything but trying the chart out.
+    tag: "latest"
+    # -- Image digest.
+    digest: ""
+    # -- Image pull policy (`Always` because of the default tag).
+    pullPolicy: Always
+  auth:
+    # -- Root access key. Generated when empty and kept on upgrades.
+    accessKey: ""
+    # -- Root secret key. Generated when empty and kept on upgrades.
+    secretKey: ""
+    # -- Use an existing Secret for the root credentials.
+    existingSecret: ""
+    # -- Key names inside the credentials Secret (the generated Secret uses them too).
+    secretKeys:
+      accessKey: access-key
+      secretKey: secret-key
+  console:
+    # -- Serve the RustFS web console on port 9001 of the Service.
+    enabled: true
+  persistence:
+    # -- Keep data on a PersistentVolumeClaim. When false an `emptyDir` is used.
+    enabled: true
+    # -- Volume size.
+    size: 20Gi
+    # -- Storage class. Empty uses the cluster default.
+    storageClass: ""
+    # -- Access modes.
+    accessModes:
+      - ReadWriteOnce
+  bucketInit:
+    # -- Image of the sidecar that creates the bucket and keeps it private. The
+    # pod only becomes ready once the bucket exists.
+    image:
+      repository: public.ecr.aws/aws-cli/aws-cli
+      tag: "latest"
+      digest: ""
+      pullPolicy: Always
+    # -- Resource requests and limits of the sidecar.
+    resources: {}
+  # -- Resource requests and limits.
+  resources: {}
+  # -- Pod security context. The image runs as uid/gid 10001.
+  podSecurityContext:
+    fsGroup: 10001
+    fsGroupChangePolicy: OnRootMismatch
+  # -- Container security context (applies to RustFS and the sidecar).
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 10001
+    runAsGroup: 10001
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+    seccompProfile:
+      type: RuntimeDefault
+  service:
+    # -- Service type.
+    type: ClusterIP
+    # -- Service annotations.
+    annotations: {}
+  # -- Pod annotations.
+  podAnnotations: {}
+  # -- Node selector.
+  nodeSelector: {}
+  # -- Tolerations.
+  tolerations: []
+  # -- Affinity.
+  affinity: {}
+  # -- Priority class.
+  priorityClassName: ""
+
+objectStore:
+  # -- Bucket that holds the data. With the bundled RustFS the chart creates it;
+  # otherwise it must already exist.
+  bucket: molesignal
+  # -- Region. Always `us-east-1` with the bundled RustFS.
+  region: us-east-1
+  # -- Endpoint of an S3-compatible store (`https://s3.example.com`). Leave empty
+  # for AWS S3. Must be empty when the bundled RustFS is enabled.
+  endpoint: ""
+  # -- Use path-style requests (`endpoint/bucket/key`). Needed by most
+  # S3-compatible stores (MinIO, Ceph, RustFS); AWS S3 wants this off.
+  pathStyle: false
+  # -- Access key. Stored in a Secret created by the chart. Leave both keys empty
+  # to run without static credentials; whether the application then finds
+  # credentials depends on the environment (for example an EC2 instance profile).
+  accessKey: ""
+  # -- Secret key.
+  secretKey: ""
+  # -- Use an existing Secret that holds the credentials instead of the two values above.
+  existingSecret: ""
+  # -- Key names inside `existingSecret`.
+  existingSecretKeys:
+    accessKey: access-key
+    secretKey: secret-key
+
+# Per-role settings -----------------------------------------------------------
+# Every role also accepts the scheduling keys of the global section (`nodeSelector`,
+# `tolerations`, `affinity`, `topologySpreadConstraints`, `priorityClassName`,
+# `podSecurityContext`, `securityContext`), `podAnnotations`, `podLabels`,
+# `extraEnv` and probe overrides (`readinessProbe`, `livenessProbe`,
+# `startupProbe`), which replace the global ones for that role.
+
+standalone:
+  # -- Replicas. Scaling a standalone install is not supported; use `distributed`.
+  replicaCount: 1
+  # -- Resource requests and limits.
+  resources: {}
+  # -- Seconds the kubelet waits after SIGTERM before it kills the process. Keep it
+  # above the application's drain timeout (`node.drain_timeout_secs`, 30 by default),
+  # which is how long pending data may take to flush.
+  terminationGracePeriodSeconds: 60
+  persistence:
+    # -- Keep the write-ahead log on a PersistentVolumeClaim. When false an
+    # `emptyDir` is used and un-flushed data is lost whenever the pod restarts.
+    enabled: true
+    # -- Volume size.
+    size: 20Gi
+    # -- Storage class. Empty uses the cluster default.
+    storageClass: ""
+    # -- Access modes.
+    accessModes:
+      - ReadWriteOnce
+    # -- Annotations of the PVC.
+    annotations: {}
+  # -- What happens to the PVC when the StatefulSet is deleted or scaled down
+  # (`whenDeleted` / `whenScaled`: `Retain` or `Delete`). Empty keeps the cluster default.
+  persistentVolumeClaimRetentionPolicy: {}
+  service:
+    # -- Service type.
+    type: ClusterIP
+    # -- Service annotations.
+    annotations: {}
+
+router:
+  # -- Replicas. Ignored when `autoscaling.enabled`.
+  replicaCount: 2
+  # -- Resource requests and limits.
+  resources: {}
+  service:
+    # -- Service type. Use `LoadBalancer` to expose the UI/API and OTLP gRPC directly.
+    type: ClusterIP
+    # -- Service annotations.
+    annotations: {}
+  autoscaling:
+    # -- Create a HorizontalPodAutoscaler.
+    enabled: false
+    # -- Minimum replicas.
+    minReplicas: 2
+    # -- Maximum replicas.
+    maxReplicas: 10
+    # -- Target average CPU utilization (percent of the request).
+    targetCPUUtilizationPercentage: 70
+    # -- Target average memory utilization (percent of the request).
+    targetMemoryUtilizationPercentage: null
+    # -- Scaling behavior, passed through to the HPA.
+    behavior: {}
+  podDisruptionBudget:
+    # -- Create a PodDisruptionBudget.
+    enabled: false
+    # -- Minimum available pods. Set one of `minAvailable` / `maxUnavailable`.
+    minAvailable: null
+    # -- Maximum unavailable pods.
+    maxUnavailable: 1
+
+intake:
+  # -- Replicas.
+  replicaCount: 2
+  # -- Resource requests and limits. Every replica buffers up to
+  # `intake.max_buffer_memory_mb` (1 GiB by default) before it flushes.
+  resources: {}
+  # -- Seconds the kubelet waits after SIGTERM before it kills the process (see `standalone`).
+  terminationGracePeriodSeconds: 60
+  # -- `OrderedReady` waits for each replica's WAL replay before it starts the next;
+  # `Parallel` starts them together.
+  podManagementPolicy: OrderedReady
+  persistence:
+    # -- Keep each replica's write-ahead log on its own PersistentVolumeClaim.
+    # When false an `emptyDir` is used and un-flushed data is lost whenever a pod restarts.
+    enabled: true
+    # -- Volume size per replica.
+    size: 20Gi
+    # -- Storage class. Empty uses the cluster default.
+    storageClass: ""
+    # -- Access modes.
+    accessModes:
+      - ReadWriteOnce
+    # -- Annotations of the PVCs.
+    annotations: {}
+  # -- What happens to the PVCs when the StatefulSet is deleted or scaled down (see `standalone`).
+  persistentVolumeClaimRetentionPolicy: {}
+  podDisruptionBudget:
+    # -- Create a PodDisruptionBudget.
+    enabled: false
+    # -- Minimum available pods.
+    minAvailable: null
+    # -- Maximum unavailable pods.
+    maxUnavailable: 1
+
+querier:
+  # -- Replicas. Ignored when `autoscaling.enabled`.
+  replicaCount: 2
+  # -- Resource requests and limits.
+  resources: {}
+  service:
+    # -- Service type.
+    type: ClusterIP
+    # -- Service annotations.
+    annotations: {}
+  autoscaling:
+    # -- Create a HorizontalPodAutoscaler.
+    enabled: false
+    # -- Minimum replicas.
+    minReplicas: 2
+    # -- Maximum replicas.
+    maxReplicas: 10
+    # -- Target average CPU utilization (percent of the request).
+    targetCPUUtilizationPercentage: 70
+    # -- Target average memory utilization (percent of the request).
+    targetMemoryUtilizationPercentage: null
+    # -- Scaling behavior, passed through to the HPA.
+    behavior: {}
+  podDisruptionBudget:
+    # -- Create a PodDisruptionBudget.
+    enabled: false
+    # -- Minimum available pods.
+    minAvailable: null
+    # -- Maximum unavailable pods.
+    maxUnavailable: 1
+
+compactor:
+  # -- Replicas. More than one share the background work by data stream and
+  # organization, and the rest take over when a node fails.
+  replicaCount: 1
+  # -- Resource requests and limits.
+  resources: {}
+  podDisruptionBudget:
+    # -- Create a PodDisruptionBudget.
+    enabled: false
+    # -- Minimum available pods.
+    minAvailable: null
+    # -- Maximum unavailable pods.
+    maxUnavailable: 1
+
+alert:
+  # -- Replicas. More than one share rules, reports and pipelines; single-point
+  # jobs run on the primary and move when it fails.
+  replicaCount: 1
+  # -- Resource requests and limits. This role renders scheduled reports with a
+  # headless Chromium (included in the image), so give it memory.
+  resources: {}
+  service:
+    # -- Service type. Probe agents connect to ports 5084 (register) and 5085
+    # (control); expose them with `LoadBalancer` or `NodePort`, and set the matching
+    # public URLs in `config.probe`.
+    type: ClusterIP
+    # -- Service annotations.
+    annotations: {}
+  podDisruptionBudget:
+    # -- Create a PodDisruptionBudget.
+    enabled: false
+    # -- Minimum available pods.
+    minAvailable: null
+    # -- Maximum unavailable pods.
+    maxUnavailable: 1
+
+web:
+  # -- Deploy the optional nginx layer in front of the router (static UI plus an
+  # `/api` proxy). Normally unnecessary: the UI is embedded in the application and
+  # served by the router. No web image is published yet, so you must build one
+  # from the application's `deploy/docker/Dockerfile.web` and set `web.image`.
+  enabled: false
+  image:
+    # -- Web image. Required when `web.enabled`.
+    repository: ""
+    # -- Web image tag. Empty means the chart's `appVersion` (`latest`).
+    tag: ""
+    # -- Image digest.
+    digest: ""
+    # -- Image pull policy.
+    pullPolicy: Always
+  # -- Replicas.
+  replicaCount: 2
+  # -- Resource requests and limits.
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+  service:
+    # -- Service type.
+    type: ClusterIP
+    # -- Service port.
+    port: 80
+    # -- Service annotations.
+    annotations: {}
+
+ingress:
+  # -- Expose the UI and HTTP API (router, or the standalone Service, or `web`).
+  enabled: false
+  # -- Ingress class.
+  className: ""
+  # -- Ingress annotations. With ingress-nginx, live tail needs
+  # `nginx.ingress.kubernetes.io/proxy-buffering: "off"` and long read/send
+  # timeouts; see examples/ingress-nginx.yaml.
+  annotations: {}
+  # -- Hosts and paths.
+  hosts:
+    - host: molesignal.local
+      paths:
+        - path: /
+          pathType: Prefix
+  # -- TLS settings, as in the Kubernetes Ingress API.
+  tls: []
+
+otlpIngress:
+  # -- Expose OTLP over gRPC (port 4317) through an Ingress. Needs a controller
+  # that speaks gRPC to the backend, and usually TLS.
+  enabled: false
+  # -- Ingress class.
+  className: ""
+  # -- Ingress annotations, for example `nginx.ingress.kubernetes.io/backend-protocol: GRPC`.
+  annotations: {}
+  # -- Hosts and paths.
+  hosts:
+    - host: otlp.molesignal.local
+      paths:
+        - path: /
+          pathType: Prefix
+  # -- TLS settings, as in the Kubernetes Ingress API.
+  tls: []
+
+waitForDependencies:
+  # -- Hold MoleSignal pods back until the bundled PostgreSQL and RustFS answer,
+  # instead of letting them crash-loop while those start. Only used when the
+  # bundled services are enabled. Runs in the application image.
+  enabled: true
+  # -- Resource requests and limits of the init container.
+  resources: {}
+
+# -- Additional Kubernetes manifests to deploy with the release. Each item is a
+# complete object, and may use template expressions, for example a NetworkPolicy.
+extraObjects: []

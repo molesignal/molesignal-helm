@@ -1,0 +1,21 @@
+# Installed by chart-testing on a throw-away kind cluster: every role as its own
+# workload, one replica each so that the runner's memory is enough.
+mode: distributed
+router:
+  replicaCount: 1
+intake:
+  replicaCount: 1
+  persistence:
+    size: 1Gi
+querier:
+  replicaCount: 1
+compactor:
+  replicaCount: 1
+alert:
+  replicaCount: 1
+postgresql:
+  persistence:
+    size: 1Gi
+rustfs:
+  persistence:
+    size: 1Gi

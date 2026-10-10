@@ -1,0 +1,6 @@
+# chart-releaser (cr) configuration; see .github/workflows/release.yaml.
+owner: molesignal
+git-repo: molesignal-helm
+# Releases are tagged <chart>-<version>, for example molesignal-0.1.0.
+release-name-template: "{{ .Name }}-{{ .Version }}"
+pages-branch: gh-pages

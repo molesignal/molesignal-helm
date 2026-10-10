@@ -1,0 +1,264 @@
+{{- /*
+Bundled RustFS: a single-node, S3-compatible object store, meant for evaluation. It
+mirrors the `rustfs` and `rustfs-init` services of the application's docker-compose
+file. The bucket is created by a sidecar in the same pod and the pod only becomes
+ready once the bucket exists, so anything waiting for the Service (the MoleSignal
+init container) waits for a usable store, not just a running process.
+*/ -}}
+{{- if .Values.rustfs.enabled }}
+{{- $s3 := .Values.rustfs }}
+{{- $name := include "molesignal.componentName" (dict "ctx" . "component" "rustfs") }}
+{{- $secretName := include "molesignal.rustfs.secretName" . }}
+{{- $labels := dict "ctx" . "component" "rustfs" "version" $s3.image.tag }}
+{{- if not $s3.auth.existingSecret }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $secretName }}
+  labels:
+    {{- include "molesignal.labels" $labels | nindent 4 }}
+  annotations:
+    helm.sh/resource-policy: keep
+    {{- with include "molesignal.annotations" (dict "ctx" .) }}
+    {{- . | nindent 4 }}
+    {{- end }}
+type: Opaque
+data:
+  {{ $s3.auth.secretKeys.accessKey }}: {{ include "molesignal.secretData" (dict "ctx" . "name" $secretName "key" $s3.auth.secretKeys.accessKey "value" $s3.auth.accessKey "generate" (randAlphaNum 20)) }}
+  {{ $s3.auth.secretKeys.secretKey }}: {{ include "molesignal.secretData" (dict "ctx" . "name" $secretName "key" $s3.auth.secretKeys.secretKey "value" $s3.auth.secretKey "generate" (randAlphaNum 40)) }}
+{{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}-headless
+  labels:
+    {{- include "molesignal.labels" $labels | nindent 4 }}
+  {{- with include "molesignal.annotations" (dict "ctx" .) }}
+  annotations:
+    {{- . | nindent 4 }}
+  {{- end }}
+spec:
+  clusterIP: None
+  selector:
+    {{- include "molesignal.selectorLabels" (dict "ctx" . "component" "rustfs") | nindent 4 }}
+  ports:
+    - name: s3
+      port: 9000
+      targetPort: s3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "molesignal.labels" $labels | nindent 4 }}
+  {{- with include "molesignal.annotations" (dict "ctx" . "extra" $s3.service.annotations) }}
+  annotations:
+    {{- . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ $s3.service.type }}
+  selector:
+    {{- include "molesignal.selectorLabels" (dict "ctx" . "component" "rustfs") | nindent 4 }}
+  ports:
+    - name: s3
+      port: 9000
+      targetPort: s3
+    {{- if $s3.console.enabled }}
+    - name: console
+      port: 9001
+      targetPort: console
+    {{- end }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "molesignal.labels" $labels | nindent 4 }}
+  {{- with include "molesignal.annotations" (dict "ctx" .) }}
+  annotations:
+    {{- . | nindent 4 }}
+  {{- end }}
+spec:
+  replicas: 1
+  serviceName: {{ $name }}-headless
+  selector:
+    matchLabels:
+      {{- include "molesignal.selectorLabels" (dict "ctx" . "component" "rustfs") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "molesignal.labels" $labels | nindent 8 }}
+      annotations:
+        checksum/secret: {{ include "molesignal.secretChecksum" . }}
+        {{- with $s3.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "molesignal.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      {{- with include "molesignal.imagePullSecrets" . }}
+      imagePullSecrets:
+        {{- . | nindent 8 }}
+      {{- end }}
+      {{- with $s3.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $s3.priorityClassName }}
+      priorityClassName: {{ . }}
+      {{- end }}
+      containers:
+        - name: rustfs
+          image: {{ include "molesignal.imageRef" (dict "ctx" . "image" $s3.image) }}
+          imagePullPolicy: {{ $s3.image.pullPolicy }}
+          env:
+            - name: RUSTFS_VOLUMES
+              value: /data
+            - name: RUSTFS_ADDRESS
+              value: 0.0.0.0:9000
+            - name: RUSTFS_CONSOLE_ADDRESS
+              value: 0.0.0.0:9001
+            - name: RUSTFS_CONSOLE_ENABLE
+              value: {{ $s3.console.enabled | quote }}
+            - name: RUSTFS_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: {{ $s3.auth.secretKeys.accessKey }}
+            - name: RUSTFS_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: {{ $s3.auth.secretKeys.secretKey }}
+          ports:
+            - name: s3
+              containerPort: 9000
+            {{- if $s3.console.enabled }}
+            - name: console
+              containerPort: 9001
+            {{- end }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: s3
+            periodSeconds: 5
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: s3
+            initialDelaySeconds: 40
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          {{- with $s3.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $s3.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+        # Creates the bucket and keeps it private, like the compose `rustfs-init`
+        # service. It talks to RustFS over localhost, then idles so that it stays
+        # part of the pod; its readiness is "the bucket exists".
+        - name: bucket-init
+          image: {{ include "molesignal.imageRef" (dict "ctx" . "image" $s3.bucketInit.image) }}
+          imagePullPolicy: {{ $s3.bucketInit.image.pullPolicy }}
+          command: ["/bin/sh", "-ec"]
+          args:
+            - |
+              s3() { aws --endpoint-url http://127.0.0.1:9000 s3api "$@"; }
+              attempt=0
+              until out="$(s3 list-buckets 2>&1)"; do
+                attempt=$((attempt + 1))
+                # Say why, on the first failure and then every 30 seconds or so.
+                if [ "$attempt" -eq 1 ] || [ $((attempt % 15)) -eq 0 ]; then
+                  echo "waiting for RustFS (attempt $attempt): $(printf '%s' "$out" | tail -n 2 | tr '\n' ' ')"
+                fi
+                sleep 2
+              done
+              if [ "$(s3 list-buckets --query "Buckets[?Name=='$BUCKET'].Name | [0]" --output text)" = "None" ]; then
+                s3 create-bucket --bucket "$BUCKET"
+              fi
+              # The bucket stays private: MoleSignal serves every object itself.
+              if s3 get-bucket-policy --bucket "$BUCKET" >/dev/null 2>&1; then
+                s3 delete-bucket-policy --bucket "$BUCKET"
+              fi
+              echo "bucket $BUCKET ready after ${SECONDS}s"
+              touch /tmp/bucket-ready
+              exec sleep infinity
+          env:
+            - name: BUCKET
+              value: {{ .Values.objectStore.bucket | quote }}
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: {{ $s3.auth.secretKeys.accessKey }}
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: {{ $s3.auth.secretKeys.secretKey }}
+            - name: AWS_DEFAULT_REGION
+              value: us-east-1
+            - name: AWS_EC2_METADATA_DISABLED
+              value: "true"
+            - name: AWS_PAGER
+              value: ""
+            - name: HOME
+              value: /tmp
+          readinessProbe:
+            exec:
+              command: ["test", "-f", "/tmp/bucket-ready"]
+            periodSeconds: 3
+          {{- with $s3.bucketInit.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $s3.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- with $s3.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $s3.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $s3.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if not $s3.persistence.enabled }}
+      volumes:
+        - name: data
+          emptyDir: {}
+      {{- end }}
+  {{- if $s3.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          {{- include "molesignal.selectorLabels" (dict "ctx" . "component" "rustfs") | nindent 10 }}
+      spec:
+        accessModes:
+          {{- toYaml $s3.persistence.accessModes | nindent 10 }}
+        {{- if $s3.persistence.storageClass }}
+        storageClassName: {{ if eq "-" $s3.persistence.storageClass }}""{{ else }}{{ $s3.persistence.storageClass | quote }}{{ end }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ $s3.persistence.size | quote }}
+  {{- end }}
+{{- end }}

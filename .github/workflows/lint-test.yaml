@@ -1,0 +1,140 @@
+# Checks every change to the chart.
+#
+#   static   no cluster: helm lint, the generated-docs check, the render tests, the
+#            mutation tests, and a schema validation of the rendered manifests
+#   install  a real install on a throw-away kind cluster, for each values file in
+#            charts/molesignal/ci, followed by `helm test`. Runs when the chart changed,
+#            and fails if the application image it would install does not exist.
+name: Lint and test
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      install_all:
+        description: Install the chart on kind even if nothing changed
+        type: boolean
+        default: false
+      image_tag:
+        description: Tag of the application image to install (default latest, or the MOLESIGNAL_IMAGE_TAG variable)
+        type: string
+        default: ""
+
+concurrency:
+  group: lint-test-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  HELM_VERSION: v3.17.3
+  YQ_VERSION: v4.52.5
+  KUBECONFORM_VERSION: v0.8.0
+  CT_VERSION: v3.15.0
+
+jobs:
+  static:
+    name: Lint, render tests, schema validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: azure/setup-helm@v5
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install yq and kubeconform
+        run: |
+          sudo curl -fsSL -o /usr/local/bin/yq \
+            "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64"
+          sudo chmod +x /usr/local/bin/yq
+          curl -fsSL \
+            "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" \
+            | sudo tar -xz -C /usr/local/bin kubeconform
+
+      - name: helm lint (defaults, ci/ and examples/)
+        run: make lint
+
+      - name: Values table in the chart README is up to date
+        run: make docs-check
+
+      - name: Render tests
+        run: make test
+
+      - name: Mutation tests (the tests must notice a broken chart)
+        run: make mutate
+
+      - name: Validate rendered manifests against the Kubernetes schemas
+        run: |
+          set -euo pipefail
+          for k8s in 1.27.0 1.31.0; do
+            for values in "" charts/molesignal/ci/*.yaml examples/*.yaml; do
+              echo "==> Kubernetes ${k8s}, values: ${values:-defaults}"
+              helm template check charts/molesignal --namespace check \
+                --kube-version "${k8s}" ${values:+--values "${values}"} \
+                | kubeconform -strict -summary -kubernetes-version "${k8s}"
+            done
+          done
+
+  install:
+    name: Install on kind
+    needs: static
+    runs-on: ubuntu-latest
+    env:
+      # The application image to install. The chart's own default is `latest`; set the
+      # repository variable MOLESIGNAL_IMAGE_TAG (or the dispatch input) to test another
+      # tag, for example a `sha-<commit>` build of the application's main branch.
+      IMAGE_TAG: ${{ inputs.image_tag || vars.MOLESIGNAL_IMAGE_TAG || 'latest' }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: azure/setup-helm@v5
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - uses: helm/chart-testing-action@v2.9.0
+        with:
+          version: ${{ env.CT_VERSION }}
+
+      - name: Find out whether the chart changed
+        id: changed
+        run: |
+          if [[ "${{ inputs.install_all }}" == "true" ]]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          elif [[ -n "$(ct list-changed --config ct.yaml)" ]]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: ct lint
+        if: steps.changed.outputs.run == 'true'
+        run: ct lint --config ct.yaml --all
+
+      - name: The application image must exist
+        if: steps.changed.outputs.run == 'true'
+        run: |
+          if ! scripts/image-published.sh molesignal/molesignal "${IMAGE_TAG}"; then
+            echo "::error title=No application image::ghcr.io/molesignal/molesignal:${IMAGE_TAG} cannot be pulled, so the chart cannot be installed. Publish an image built from the application's main branch under that tag, or set the repository variable MOLESIGNAL_IMAGE_TAG to one that exists (a sha-<commit> tag works). The application's release workflow pushes 'latest' only for stable-channel releases."
+            exit 1
+          fi
+
+      - uses: helm/kind-action@v1.15.1
+        if: steps.changed.outputs.run == 'true'
+
+      # Not `ct install`: it deletes the namespace before anything can read the logs of a
+      # container that crashed. This script prints them first (scripts/ci-install.sh).
+      - name: Install every ci/ values file, then helm test
+        if: steps.changed.outputs.run == 'true'
+        run: scripts/ci-install.sh

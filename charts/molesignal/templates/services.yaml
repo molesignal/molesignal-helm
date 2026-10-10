@@ -1,0 +1,41 @@
+{{- /*
+A Service per role, named like its workload. Intake is headless (the router finds
+intake nodes through the database, not DNS); the compactor has no Service because
+it only runs background work.
+*/ -}}
+{{- $specs := include "molesignal.roleSpecs" . | fromYaml }}
+{{- range $role := (include "molesignal.activeRoles" . | fromJsonArray) }}
+{{- $spec := index $specs $role }}
+{{- if $spec.service }}
+{{- $roleCfg := index $.Values $role }}
+{{- $service := $roleCfg.service | default dict }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "molesignal.workloadName" (dict "ctx" $ "role" $role) }}
+  labels:
+    {{- include "molesignal.labels" (dict "ctx" $ "component" $role) | nindent 4 }}
+  {{- with include "molesignal.annotations" (dict "ctx" $ "extra" $service.annotations) }}
+  annotations:
+    {{- . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if $spec.headless }}
+  clusterIP: None
+  {{- else }}
+  type: {{ default "ClusterIP" $service.type }}
+  {{- end }}
+  selector:
+    {{- include "molesignal.selectorLabels" (dict "ctx" $ "component" $role) | nindent 4 }}
+  ports:
+    {{- range $spec.ports }}
+    - name: {{ . }}
+      port: {{ include "molesignal.port" (dict "ctx" $ "name" .) }}
+      targetPort: {{ . }}
+      {{- if or (eq . "grpc") (eq . "otlp-grpc") }}
+      appProtocol: grpc
+      {{- end }}
+    {{- end }}
+{{- end }}
+{{- end }}

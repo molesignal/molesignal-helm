@@ -1,0 +1,50 @@
+{{- /*
+Optional autoscaling for the two stateless roles. CPU and memory targets are
+percentages of the container's resource *requests*, so set `resources.requests`.
+*/ -}}
+{{- if eq .Values.mode "distributed" }}
+{{- range $role := list "router" "querier" }}
+{{- $cfg := index $.Values $role }}
+{{- if $cfg.autoscaling.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "molesignal.workloadName" (dict "ctx" $ "role" $role) }}
+  labels:
+    {{- include "molesignal.labels" (dict "ctx" $ "component" $role) | nindent 4 }}
+  {{- with include "molesignal.annotations" (dict "ctx" $) }}
+  annotations:
+    {{- . | nindent 4 }}
+  {{- end }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "molesignal.workloadName" (dict "ctx" $ "role" $role) }}
+  minReplicas: {{ $cfg.autoscaling.minReplicas }}
+  maxReplicas: {{ $cfg.autoscaling.maxReplicas }}
+  metrics:
+    {{- with $cfg.autoscaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ . }}
+    {{- end }}
+    {{- with $cfg.autoscaling.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ . }}
+    {{- end }}
+  {{- with $cfg.autoscaling.behavior }}
+  behavior:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,46 @@
+# Exposing the UI/API and OTLP over gRPC through ingress-nginx.
+#
+# Live tail streams rows as they arrive: the controller must not buffer responses,
+# and long queries need generous timeouts. OTLP over gRPC needs the backend
+# protocol set to GRPC and, with nginx, TLS on the listener.
+
+externalUrl: https://observability.example.com
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+    # The application serves /metrics without authentication on the same port as the
+    # UI, so do not let it through to the internet. This answers 404 for it. Snippet
+    # annotations must be allowed by the controller (`allow-snippet-annotations`, and
+    # a risk level that admits them in recent ingress-nginx); if they are not, restrict
+    # /metrics some other way, for example with a NetworkPolicy or an internal-only ingress.
+    nginx.ingress.kubernetes.io/server-snippet: |
+      location = /metrics { return 404; }
+  hosts:
+    - host: observability.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: observability-tls
+      hosts:
+        - observability.example.com
+
+otlpIngress:
+  enabled: true
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/backend-protocol: GRPC
+  hosts:
+    - host: otlp.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: otlp-tls
+      hosts:
+        - otlp.example.com
