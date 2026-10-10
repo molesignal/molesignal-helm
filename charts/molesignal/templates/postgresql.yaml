@@ -1,0 +1,204 @@
+{{- /*
+Bundled PostgreSQL: a single instance, meant for evaluation. It mirrors the
+`postgresql` service of the application's docker-compose file (postgres:17, one
+database owned by one user) and adds what Kubernetes needs: a volume, probes and a
+raised connection limit.
+*/ -}}
+{{- if .Values.postgresql.enabled }}
+{{- $pg := .Values.postgresql }}
+{{- $name := include "molesignal.componentName" (dict "ctx" . "component" "postgresql") }}
+{{- $secretName := include "molesignal.postgresql.secretName" . }}
+{{- $labels := dict "ctx" . "component" "postgresql" "version" $pg.image.tag }}
+{{- if not $pg.auth.existingSecret }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $secretName }}
+  labels:
+    {{- include "molesignal.labels" $labels | nindent 4 }}
+  annotations:
+    helm.sh/resource-policy: keep
+    {{- with include "molesignal.annotations" (dict "ctx" .) }}
+    {{- . | nindent 4 }}
+    {{- end }}
+type: Opaque
+data:
+  {{ $pg.auth.secretKey }}: {{ include "molesignal.secretData" (dict "ctx" . "name" $secretName "key" $pg.auth.secretKey "value" $pg.auth.password "generate" (randAlphaNum 32)) }}
+{{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}-headless
+  labels:
+    {{- include "molesignal.labels" $labels | nindent 4 }}
+  {{- with include "molesignal.annotations" (dict "ctx" .) }}
+  annotations:
+    {{- . | nindent 4 }}
+  {{- end }}
+spec:
+  clusterIP: None
+  selector:
+    {{- include "molesignal.selectorLabels" (dict "ctx" . "component" "postgresql") | nindent 4 }}
+  ports:
+    - name: postgresql
+      port: 5432
+      targetPort: postgresql
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "molesignal.labels" $labels | nindent 4 }}
+  {{- with include "molesignal.annotations" (dict "ctx" . "extra" $pg.service.annotations) }}
+  annotations:
+    {{- . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ $pg.service.type }}
+  selector:
+    {{- include "molesignal.selectorLabels" (dict "ctx" . "component" "postgresql") | nindent 4 }}
+  ports:
+    - name: postgresql
+      port: 5432
+      targetPort: postgresql
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "molesignal.labels" $labels | nindent 4 }}
+  {{- with include "molesignal.annotations" (dict "ctx" .) }}
+  annotations:
+    {{- . | nindent 4 }}
+  {{- end }}
+spec:
+  replicas: 1
+  serviceName: {{ $name }}-headless
+  selector:
+    matchLabels:
+      {{- include "molesignal.selectorLabels" (dict "ctx" . "component" "postgresql") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "molesignal.labels" $labels | nindent 8 }}
+      annotations:
+        checksum/secret: {{ include "molesignal.secretChecksum" . }}
+        {{- with $pg.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "molesignal.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      {{- with include "molesignal.imagePullSecrets" . }}
+      imagePullSecrets:
+        {{- . | nindent 8 }}
+      {{- end }}
+      {{- with $pg.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      terminationGracePeriodSeconds: 60
+      {{- with $pg.priorityClassName }}
+      priorityClassName: {{ . }}
+      {{- end }}
+      containers:
+        - name: postgresql
+          image: {{ include "molesignal.imageRef" (dict "ctx" . "image" $pg.image) }}
+          imagePullPolicy: {{ $pg.image.pullPolicy }}
+          args:
+            - -c
+            - max_connections={{ $pg.maxConnections }}
+            {{- with $pg.extraArgs }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          env:
+            - name: POSTGRES_USER
+              value: {{ $pg.auth.username | quote }}
+            - name: POSTGRES_DB
+              value: {{ $pg.auth.database | quote }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: {{ $pg.auth.secretKey }}
+            # A subdirectory of the mount: a freshly provisioned volume often has a
+            # `lost+found` at its root, which initdb refuses to initialise over.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          ports:
+            - name: postgresql
+              containerPort: 5432
+          startupProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - exec pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB" -h 127.0.0.1 -p 5432
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - exec pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB" -h 127.0.0.1 -p 5432
+            periodSeconds: 5
+            timeoutSeconds: 5
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - exec pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB" -h 127.0.0.1 -p 5432
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          {{- with $pg.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $pg.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+      {{- with $pg.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $pg.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $pg.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if not $pg.persistence.enabled }}
+      volumes:
+        - name: data
+          emptyDir: {}
+      {{- end }}
+  {{- if $pg.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          {{- include "molesignal.selectorLabels" (dict "ctx" . "component" "postgresql") | nindent 10 }}
+      spec:
+        accessModes:
+          {{- toYaml $pg.persistence.accessModes | nindent 10 }}
+        {{- if $pg.persistence.storageClass }}
+        storageClassName: {{ if eq "-" $pg.persistence.storageClass }}""{{ else }}{{ $pg.persistence.storageClass | quote }}{{ end }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ $pg.persistence.size | quote }}
+  {{- end }}
+{{- end }}

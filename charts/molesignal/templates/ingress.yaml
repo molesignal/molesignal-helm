@@ -1,0 +1,86 @@
+{{- /*
+Ingress for the UI and HTTP API. It points at the web layer when that is enabled,
+otherwise at the standalone Service or the router.
+*/ -}}
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "molesignal.fullname" . }}
+  labels:
+    {{- include "molesignal.labels" (dict "ctx" . "component" "ingress") | nindent 4 }}
+  {{- with include "molesignal.annotations" (dict "ctx" . "extra" .Values.ingress.annotations) }}
+  annotations:
+    {{- . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- with .Values.ingress.tls }}
+  tls:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    {{- range .Values.ingress.hosts }}
+    - host: {{ .host | quote }}
+      http:
+        paths:
+          {{- range .paths }}
+          - path: {{ .path }}
+            pathType: {{ default "Prefix" .pathType }}
+            backend:
+              service:
+                {{- if $.Values.web.enabled }}
+                name: {{ include "molesignal.componentName" (dict "ctx" $ "component" "web") }}
+                port:
+                  number: {{ $.Values.web.service.port }}
+                {{- else }}
+                name: {{ include "molesignal.frontService" $ }}
+                port:
+                  name: http
+                {{- end }}
+          {{- end }}
+    {{- end }}
+{{- end }}
+
+{{- /*
+Ingress for OTLP over gRPC (port 4317). The controller must speak gRPC to the
+backend; with ingress-nginx add `nginx.ingress.kubernetes.io/backend-protocol: GRPC`.
+*/ -}}
+{{- if .Values.otlpIngress.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "molesignal.fullname" . }}-otlp
+  labels:
+    {{- include "molesignal.labels" (dict "ctx" . "component" "ingress") | nindent 4 }}
+  {{- with include "molesignal.annotations" (dict "ctx" . "extra" .Values.otlpIngress.annotations) }}
+  annotations:
+    {{- . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.otlpIngress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- with .Values.otlpIngress.tls }}
+  tls:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    {{- range .Values.otlpIngress.hosts }}
+    - host: {{ .host | quote }}
+      http:
+        paths:
+          {{- range .paths }}
+          - path: {{ .path }}
+            pathType: {{ default "Prefix" .pathType }}
+            backend:
+              service:
+                name: {{ include "molesignal.otlpService" $ }}
+                port:
+                  name: otlp-grpc
+          {{- end }}
+    {{- end }}
+{{- end }}

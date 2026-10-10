@@ -1,0 +1,31 @@
+{{- /*
+Optional PodDisruptionBudgets, one per role. The standalone role has no
+`podDisruptionBudget` value on purpose: with a single replica a budget would only
+block node drains.
+*/ -}}
+{{- range $role := (include "molesignal.activeRoles" . | fromJsonArray) }}
+{{- $cfg := index $.Values $role }}
+{{- $pdb := $cfg.podDisruptionBudget | default dict }}
+{{- if $pdb.enabled }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "molesignal.workloadName" (dict "ctx" $ "role" $role) }}
+  labels:
+    {{- include "molesignal.labels" (dict "ctx" $ "component" $role) | nindent 4 }}
+  {{- with include "molesignal.annotations" (dict "ctx" $) }}
+  annotations:
+    {{- . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if $pdb.minAvailable }}
+  minAvailable: {{ $pdb.minAvailable }}
+  {{- else if $pdb.maxUnavailable }}
+  maxUnavailable: {{ $pdb.maxUnavailable }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "molesignal.selectorLabels" (dict "ctx" $ "component" $role) | nindent 6 }}
+{{- end }}
+{{- end }}

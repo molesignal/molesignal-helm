@@ -1,0 +1,95 @@
+{{- /*
+Optional nginx layer (static UI plus an /api reverse proxy to the router). The
+application already serves the UI itself, so this is only for setups that want the
+static assets cached separately. See deploy/docker/Dockerfile.web upstream.
+*/ -}}
+{{- if .Values.web.enabled }}
+{{- $name := include "molesignal.componentName" (dict "ctx" . "component" "web") }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "molesignal.labels" (dict "ctx" . "component" "web") | nindent 4 }}
+  {{- with include "molesignal.annotations" (dict "ctx" .) }}
+  annotations:
+    {{- . | nindent 4 }}
+  {{- end }}
+spec:
+  replicas: {{ .Values.web.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "molesignal.selectorLabels" (dict "ctx" . "component" "web") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "molesignal.labels" (dict "ctx" . "component" "web") | nindent 8 }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "molesignal.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automount }}
+      {{- with include "molesignal.imagePullSecrets" . }}
+      imagePullSecrets:
+        {{- . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: web
+          image: {{ include "molesignal.imageRef" (dict "ctx" . "image" .Values.web.image "defaultTag" .Chart.AppVersion) }}
+          imagePullPolicy: {{ .Values.web.image.pullPolicy }}
+          env:
+            - name: MS_BACKEND
+              value: {{ printf "%s:%d" (include "molesignal.frontService" .) (include "molesignal.port" (dict "ctx" . "name" "http") | int) | quote }}
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          {{- with .Values.web.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "molesignal.labels" (dict "ctx" . "component" "web") | nindent 4 }}
+  {{- with include "molesignal.annotations" (dict "ctx" . "extra" .Values.web.service.annotations) }}
+  annotations:
+    {{- . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.web.service.type }}
+  selector:
+    {{- include "molesignal.selectorLabels" (dict "ctx" . "component" "web") | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.web.service.port }}
+      targetPort: http
+{{- end }}

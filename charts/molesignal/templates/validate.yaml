@@ -1,0 +1,3 @@
+{{- /* Renders nothing: it only runs the checks, so a bad combination of values fails
+the install with a message instead of producing a broken release. */ -}}
+{{- include "molesignal.validate" . -}}

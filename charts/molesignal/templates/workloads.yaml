@@ -1,0 +1,61 @@
+{{- /*
+One workload per active role: a StatefulSet for the roles that keep a write-ahead
+log (intake, standalone) and a Deployment for the rest. The pod template is shared;
+see molesignal.podTemplate.
+*/ -}}
+{{- $specs := include "molesignal.roleSpecs" . | fromYaml }}
+{{- range $role := (include "molesignal.activeRoles" . | fromJsonArray) }}
+{{- $spec := index $specs $role }}
+{{- $roleCfg := index $.Values $role }}
+{{- $name := include "molesignal.workloadName" (dict "ctx" $ "role" $role) }}
+---
+apiVersion: apps/v1
+kind: {{ $spec.kind }}
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "molesignal.labels" (dict "ctx" $ "component" $role) | nindent 4 }}
+  {{- with include "molesignal.annotations" (dict "ctx" $) }}
+  annotations:
+    {{- . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if not (and (eq $spec.kind "Deployment") $roleCfg.autoscaling $roleCfg.autoscaling.enabled) }}
+  replicas: {{ $roleCfg.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "molesignal.selectorLabels" (dict "ctx" $ "component" $role) | nindent 6 }}
+  {{- if eq $spec.kind "StatefulSet" }}
+  serviceName: {{ $name }}
+  {{- with $roleCfg.podManagementPolicy }}
+  podManagementPolicy: {{ . }}
+  {{- end }}
+  {{- with $roleCfg.persistentVolumeClaimRetentionPolicy }}
+  persistentVolumeClaimRetentionPolicy:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- end }}
+  template:
+    {{- include "molesignal.podTemplate" (dict "ctx" $ "role" $role) | nindent 4 }}
+  {{- if and (eq $spec.kind "StatefulSet") $roleCfg.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          {{- include "molesignal.selectorLabels" (dict "ctx" $ "component" $role) | nindent 10 }}
+        {{- with $roleCfg.persistence.annotations }}
+        annotations:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+      spec:
+        accessModes:
+          {{- toYaml $roleCfg.persistence.accessModes | nindent 10 }}
+        {{- if $roleCfg.persistence.storageClass }}
+        storageClassName: {{ if eq "-" $roleCfg.persistence.storageClass }}""{{ else }}{{ $roleCfg.persistence.storageClass | quote }}{{ end }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ $roleCfg.persistence.size | quote }}
+  {{- end }}
+{{- end }}
