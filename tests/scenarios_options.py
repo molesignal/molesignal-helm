@@ -191,7 +191,7 @@ def web_layer() -> None:
     check(m.get("Service", f"{FULL}-web")["spec"]["ports"][0]["port"] == 80, "web Service on port 80")
     tagless = render({"mode": "distributed", "web": {"enabled": True, "image": {"repository": "r/web"}}})
     check(
-        container(tagless.get("Deployment", f"{FULL}-web"), "web")["image"] == "r/web:26.1.0.0",
+        container(tagless.get("Deployment", f"{FULL}-web"), "web")["image"] == "r/web:latest",
         "no tag means the application version",
     )
 
@@ -237,11 +237,11 @@ def registry_and_pull_secrets() -> None:
         for c in containers(w) + containers(w, init=True):
             images[(w["metadata"]["name"], c["name"])] = c["image"]
     wanted = {
-        (f"{FULL}-router", "molesignal"): "mirror.example.cn/molesignal/molesignal:26.1.0.0",
-        (f"{FULL}-router", "wait-for-dependencies"): "mirror.example.cn/molesignal/molesignal:26.1.0.0",
+        (f"{FULL}-router", "molesignal"): "mirror.example.cn/molesignal/molesignal:latest",
+        (f"{FULL}-router", "wait-for-dependencies"): "mirror.example.cn/molesignal/molesignal:latest",
         (f"{FULL}-postgresql", "postgresql"): "mirror.example.cn/postgres:17",
-        (f"{FULL}-rustfs", "rustfs"): "mirror.example.cn/rustfs/rustfs:1.0.1",
-        (f"{FULL}-rustfs", "bucket-init"): "mirror.example.cn/aws-cli/aws-cli:2.37.12",
+        (f"{FULL}-rustfs", "rustfs"): "mirror.example.cn/rustfs/rustfs:latest",
+        (f"{FULL}-rustfs", "bucket-init"): "mirror.example.cn/aws-cli/aws-cli:latest",
         (f"{FULL}-web", "web"): "mirror.example.cn/internal/web:1",
     }
     check(all(images[k] == v for k, v in wanted.items()), "the registry host is replaced and the path kept", str({k: images[k] for k in wanted if images[k] != wanted[k]}))
@@ -252,7 +252,7 @@ def registry_and_pull_secrets() -> None:
     check(all(pod_spec(w).get("imagePullSecrets") for w in m.workloads()), "every workload gets them")
     digest = "sha256:" + "a" * 64
     pinned = render(sets=[f"image.digest={digest}"])
-    check(container(pinned.get("StatefulSet", FULL), "molesignal")["image"] == f"ghcr.io/molesignal/molesignal:26.1.0.0@{digest}", "a digest is appended to the tag")
+    check(container(pinned.get("StatefulSet", FULL), "molesignal")["image"] == f"ghcr.io/molesignal/molesignal:latest@{digest}", "a digest is appended to the tag")
     custom = render(sets=["image.tag=26.2.0.0", "image.repository=registry.local/ms"])
     check(container(custom.get("StatefulSet", FULL), "molesignal")["image"] == "registry.local/ms:26.2.0.0", "repository and tag can be set")
 

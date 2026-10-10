@@ -39,6 +39,31 @@ helm install molesignal oci://ghcr.io/molesignal/charts/molesignal --version 0.1
   bundled services (or switch persistence off for a throw-away install).
 - For production: a PostgreSQL 17 database and an S3-compatible bucket.
 
+## Images
+
+Every image except PostgreSQL's follows `latest` and is pulled on every pod start
+(`pullPolicy: Always`, because `IfNotPresent` would keep serving a stale `latest` from the node's cache):
+
+| Value | Default |
+| --- | --- |
+| `image` (the application) | `ghcr.io/molesignal/molesignal:latest` |
+| `rustfs.image` | `rustfs/rustfs:latest` |
+| `rustfs.bucketInit.image` | `public.ecr.aws/aws-cli/aws-cli:latest` |
+| `postgresql.image` | `postgres:17` |
+
+`latest` moves, so two installs of the same chart can run different versions, and a pod that
+restarts can come back on a newer image than its siblings. For anything beyond trying the chart out,
+pin `image.tag` (or `image.digest`) and the RustFS tag, and go back to `pullPolicy: IfNotPresent`.
+
+**The chart follows the application's `main` branch**: the role names (`alert`, not `alert_manager`),
+the metadata database connection (`MS_META_DATABASE_DSN`), the cluster token and the report-rendering
+settings are those of `deploy/k8s` there. An image built before that does not start with this chart.
+As of 2026-10-11 that is every tag published for the application (`26.1.0.0`, `alpha`, built on
+2026-08-17): the alert role is still called `alert_manager` in them and the metadata store is
+configured differently. The application's release workflow also pushes `latest` only for
+stable-channel releases, so until there is one `ghcr.io/molesignal/molesignal:latest` cannot be pulled
+at all; install with an explicit `image.tag` meanwhile.
+
 ## Choosing a topology
 
 | `mode` | What runs | Use it for |
@@ -240,9 +265,9 @@ The table is generated from `values.yaml` (`python3 scripts/gen-values-doc.py`).
 | `commonAnnotations` | object | `{}` | Annotations added to every resource. |
 | `mode` | string | `"standalone"` | Deployment topology. `standalone` runs every role in one StatefulSet (what `docker compose up` does). `distributed` runs router, intake, querier, compactor and alert as separate workloads that scale independently. |
 | `image.repository` | string | `"ghcr.io/molesignal/molesignal"` | Application image. One image serves every role. |
-| `image.tag` | string | `""` | Image tag. Defaults to the chart's `appVersion`. |
+| `image.tag` | string | `""` | Image tag. Empty means the chart's `appVersion`, which is `latest`. That tag moves: pin a version (or `digest`) for anything but trying the chart out. |
 | `image.digest` | string | `""` | Image digest (`sha256:...`). When set it is used together with the tag. |
-| `image.pullPolicy` | string | `"IfNotPresent"` | Image pull policy. |
+| `image.pullPolicy` | string | `"Always"` | Image pull policy. `Always`, because the default tag moves; use `IfNotPresent` once you pin one. |
 | `imagePullSecrets` | list | `[]` | Pull secrets, as a list of `{name: ...}`. |
 | `releaseChannel` | string | `"alpha"` | Runtime delivery channel, exposed to the application as `RELEASE_CHANNEL`. One of `alpha`, `beta`, `rc`, `stable`. It is metadata only: promoting a build through channels does not change the image, just this value. |
 | `logging.level` | string | `"info,tantivy=warn"` | Log filter, in `tracing` env-filter syntax. |
@@ -304,9 +329,9 @@ The table is generated from `values.yaml` (`python3 scripts/gen-values-doc.py`).
 | `externalDatabase.existingSecretKey` | string | `"database-dsn"` | Key of the connection string inside `existingSecret`. |
 | `rustfs.enabled` | bool | `true` | Deploy a single RustFS instance (S3-compatible object store) and create the bucket in it. **For evaluation only**: one replica, no redundancy. Turn it off and use `objectStore` with S3 or a managed store in production. |
 | `rustfs.image.repository` | string | `"rustfs/rustfs"` | RustFS image. |
-| `rustfs.image.tag` | string | `"1.0.1"` | RustFS image tag. |
+| `rustfs.image.tag` | string | `"latest"` | RustFS image tag. `latest` moves: pin one for anything but trying the chart out. |
 | `rustfs.image.digest` | string | `""` | Image digest. |
-| `rustfs.image.pullPolicy` | string | `"IfNotPresent"` | Image pull policy. |
+| `rustfs.image.pullPolicy` | string | `"Always"` | Image pull policy (`Always` because of the default tag). |
 | `rustfs.auth.accessKey` | string | `""` | Root access key. Generated when empty and kept on upgrades. |
 | `rustfs.auth.secretKey` | string | `""` | Root secret key. Generated when empty and kept on upgrades. |
 | `rustfs.auth.existingSecret` | string | `""` | Use an existing Secret for the root credentials. |
@@ -316,7 +341,7 @@ The table is generated from `values.yaml` (`python3 scripts/gen-values-doc.py`).
 | `rustfs.persistence.size` | string | `"20Gi"` | Volume size. |
 | `rustfs.persistence.storageClass` | string | `""` | Storage class. Empty uses the cluster default. |
 | `rustfs.persistence.accessModes` | list | `["ReadWriteOnce"]` | Access modes. |
-| `rustfs.bucketInit.image` | object | `{"repository":"public.ecr.aws/aws-cli/aws-cli","tag":"2.37.12","digest":"","p...` | Image of the sidecar that creates the bucket and keeps it private. The pod only becomes ready once the bucket exists. |
+| `rustfs.bucketInit.image` | object | `{"repository":"public.ecr.aws/aws-cli/aws-cli","tag":"latest","digest":"","pu...` | Image of the sidecar that creates the bucket and keeps it private. The pod only becomes ready once the bucket exists. |
 | `rustfs.bucketInit.resources` | object | `{}` | Resource requests and limits of the sidecar. |
 | `rustfs.resources` | object | `{}` | Resource requests and limits. |
 | `rustfs.podSecurityContext` | object | `{"fsGroup":10001,"fsGroupChangePolicy":"OnRootMismatch"}` | Pod security context. The image runs as uid/gid 10001. |
@@ -400,9 +425,9 @@ The table is generated from `values.yaml` (`python3 scripts/gen-values-doc.py`).
 | `alert.podDisruptionBudget.maxUnavailable` | int | `1` | Maximum unavailable pods. |
 | `web.enabled` | bool | `false` | Deploy the optional nginx layer in front of the router (static UI plus an `/api` proxy). Normally unnecessary: the UI is embedded in the application and served by the router. No web image is published yet, so you must build one from the application's `deploy/docker/Dockerfile.web` and set `web.image`. |
 | `web.image.repository` | string | `""` | Web image. Required when `web.enabled`. |
-| `web.image.tag` | string | `""` | Web image tag. |
+| `web.image.tag` | string | `""` | Web image tag. Empty means the chart's `appVersion` (`latest`). |
 | `web.image.digest` | string | `""` | Image digest. |
-| `web.image.pullPolicy` | string | `"IfNotPresent"` | Image pull policy. |
+| `web.image.pullPolicy` | string | `"Always"` | Image pull policy. |
 | `web.replicaCount` | int | `2` | Replicas. |
 | `web.resources` | object | `{"requests":{"cpu":"50m","memory":"64Mi"},"limits":{"cpu":"500m","memory":"25...` | Resource requests and limits. |
 | `web.service.type` | string | `"ClusterIP"` | Service type. |

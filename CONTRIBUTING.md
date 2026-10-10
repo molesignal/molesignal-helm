@@ -17,6 +17,11 @@ runs everything CI runs without a cluster: `helm lint --strict` for the defaults
 current, the render tests and the mutation tests. CI adds a kubeconform pass and an install on
 kind.
 
+The install job in CI needs an application image it can pull: `ghcr.io/molesignal/molesignal:latest`
+unless the repository variable `MOLESIGNAL_IMAGE_TAG` says otherwise (see [publishing](docs/publishing.md)).
+`scripts/ci-install.sh` is what it runs on kind; its control flow is tested with stand-ins for `helm`
+and `kubectl`.
+
 The scripts point `KUBECONFIG` at `/dev/null`. Keep it that way: nothing here needs a cluster, and
 a test must never be able to touch yours.
 

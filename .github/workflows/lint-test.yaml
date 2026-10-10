@@ -3,7 +3,8 @@
 #   static   no cluster: helm lint, the generated-docs check, the render tests, the
 #            mutation tests, and a schema validation of the rendered manifests
 #   install  a real install on a throw-away kind cluster, for each values file in
-#            charts/molesignal/ci, followed by `helm test`. Runs when the chart changed.
+#            charts/molesignal/ci, followed by `helm test`. Runs when the chart changed,
+#            and fails if the application image it would install does not exist.
 name: Lint and test
 
 on:
@@ -13,9 +14,13 @@ on:
   workflow_dispatch:
     inputs:
       install_all:
-        description: Install every chart on kind even if nothing changed
+        description: Install the chart on kind even if nothing changed
         type: boolean
         default: false
+      image_tag:
+        description: Tag of the application image to install (default latest, or the MOLESIGNAL_IMAGE_TAG variable)
+        type: string
+        default: ""
 
 concurrency:
   group: lint-test-${{ github.ref }}
@@ -82,6 +87,11 @@ jobs:
     name: Install on kind
     needs: static
     runs-on: ubuntu-latest
+    env:
+      # The application image to install. The chart's own default is `latest`; set the
+      # repository variable MOLESIGNAL_IMAGE_TAG (or the dispatch input) to test another
+      # tag, for example a `sha-<commit>` build of the application's main branch.
+      IMAGE_TAG: ${{ inputs.image_tag || vars.MOLESIGNAL_IMAGE_TAG || 'latest' }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -112,15 +122,19 @@ jobs:
         if: steps.changed.outputs.run == 'true'
         run: ct lint --config ct.yaml --all
 
+      - name: The application image must exist
+        if: steps.changed.outputs.run == 'true'
+        run: |
+          if ! scripts/image-published.sh molesignal/molesignal "${IMAGE_TAG}"; then
+            echo "::error title=No application image::ghcr.io/molesignal/molesignal:${IMAGE_TAG} cannot be pulled, so the chart cannot be installed. Publish an image built from the application's main branch under that tag, or set the repository variable MOLESIGNAL_IMAGE_TAG to one that exists (a sha-<commit> tag works). The application's release workflow pushes 'latest' only for stable-channel releases."
+            exit 1
+          fi
+
       - uses: helm/kind-action@v1.15.1
         if: steps.changed.outputs.run == 'true'
 
-      - name: ct install (one install per values file in ci/, then helm test)
+      # Not `ct install`: it deletes the namespace before anything can read the logs of a
+      # container that crashed. This script prints them first (scripts/ci-install.sh).
+      - name: Install every ci/ values file, then helm test
         if: steps.changed.outputs.run == 'true'
-        run: ct install --config ct.yaml --all
-
-      - name: What is running, when the install failed
-        if: failure()
-        run: |
-          kubectl get pods --all-namespaces -o wide || true
-          kubectl get events --all-namespaces --sort-by=.lastTimestamp | tail -40 || true
+        run: scripts/ci-install.sh

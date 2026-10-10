@@ -35,12 +35,14 @@ mode: standalone
 image:
   # -- Application image. One image serves every role.
   repository: ghcr.io/molesignal/molesignal
-  # -- Image tag. Defaults to the chart's `appVersion`.
+  # -- Image tag. Empty means the chart's `appVersion`, which is `latest`. That tag
+  # moves: pin a version (or `digest`) for anything but trying the chart out.
   tag: ""
   # -- Image digest (`sha256:...`). When set it is used together with the tag.
   digest: ""
-  # -- Image pull policy.
-  pullPolicy: IfNotPresent
+  # -- Image pull policy. `Always`, because the default tag moves; use
+  # `IfNotPresent` once you pin one.
+  pullPolicy: Always
 # -- Pull secrets, as a list of `{name: ...}`.
 imagePullSecrets: []
 
@@ -240,12 +242,12 @@ rustfs:
   image:
     # -- RustFS image.
     repository: rustfs/rustfs
-    # -- RustFS image tag.
-    tag: "1.0.1"
+    # -- RustFS image tag. `latest` moves: pin one for anything but trying the chart out.
+    tag: "latest"
     # -- Image digest.
     digest: ""
-    # -- Image pull policy.
-    pullPolicy: IfNotPresent
+    # -- Image pull policy (`Always` because of the default tag).
+    pullPolicy: Always
   auth:
     # -- Root access key. Generated when empty and kept on upgrades.
     accessKey: ""
@@ -275,9 +277,9 @@ rustfs:
     # pod only becomes ready once the bucket exists.
     image:
       repository: public.ecr.aws/aws-cli/aws-cli
-      tag: "2.37.12"
+      tag: "latest"
       digest: ""
-      pullPolicy: IfNotPresent
+      pullPolicy: Always
     # -- Resource requests and limits of the sidecar.
     resources: {}
   # -- Resource requests and limits.
@@ -517,12 +519,12 @@ web:
   image:
     # -- Web image. Required when `web.enabled`.
     repository: ""
-    # -- Web image tag.
+    # -- Web image tag. Empty means the chart's `appVersion` (`latest`).
     tag: ""
     # -- Image digest.
     digest: ""
     # -- Image pull policy.
-    pullPolicy: IfNotPresent
+    pullPolicy: Always
   # -- Replicas.
   replicaCount: 2
   # -- Resource requests and limits.

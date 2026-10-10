@@ -7,11 +7,17 @@ not change, and a new application release is not always a chart release.
 | Where | What | Format |
 | --- | --- | --- |
 | `version` in `Chart.yaml` | the **chart** | SemVer, `0.1.0` |
-| `appVersion` in `Chart.yaml` | the application image the chart deploys by default | the application's own tag, `26.1.0.0` |
+| `appVersion` in `Chart.yaml` | the application image the chart deploys by default | `latest` |
 | `image.tag` in the values | overrides `appVersion` for one install | any published tag |
 
 The application's versions have four numbers and are not SemVer; the chart's are, because
 Helm requires it. The two never need to match.
+
+The chart deploys the application's `latest` image (and RustFS's and the AWS CLI's; only
+PostgreSQL is pinned, to 17), so a new application release does not need a new chart. What does
+need one is a change in something the chart mirrors from the application's `deploy/k8s`: a role
+name, a setting, a port, a probe. Each changelog entry says which state of the application it was
+written against.
 
 ## When to bump what
 
@@ -32,13 +38,15 @@ place: the label selector of a Deployment or StatefulSet, and the `volumeClaimTe
 StatefulSet. The tests keep the selectors to the three stable labels
 (`app.kubernetes.io/name`, `instance`, `component`) and never add `commonLabels` to them.
 
-## Moving the application version
+## Pinning the application version
 
-- **To a version the chart has not been released for yet:** set `image.tag`. Read the
-  application's release notes; the chart makes no promise for versions it was not tested with.
-- **In the chart:** change `appVersion` and the matching image in the
-  `artifacthub.io/images` annotation (a test fails if they drift apart), add a changelog
-  line, and bump the chart version, usually a patch or a minor.
+`latest` is convenient and not reproducible. For production set `image.tag` (or `image.digest`),
+the RustFS tag, and `pullPolicy: IfNotPresent`; [`examples/production.yaml`](../examples/production.yaml)
+shows where. When the application changes in a way that needs a chart change, release the chart
+first or together with it, and say in the changelog from which application state on it works.
+
+The images the chart uses are listed in three places that must agree: `values.yaml`, the
+`artifacthub.io/images` annotation in `Chart.yaml`, and the README. A test compares the first two.
 
 ## Releasing
 

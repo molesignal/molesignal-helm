@@ -18,6 +18,14 @@
 # Keep a copy of the cipher key somewhere safe: without it, encrypted fields cannot
 # be read again.
 
+# The defaults follow `latest` and pull it every time. For production, pin what you have tested:
+#
+#   image:
+#     tag: "<a released application version>"      # or: digest: sha256:...
+#     pullPolicy: IfNotPresent
+#   rustfs:                                          # only when the bundled RustFS is on
+#     image: {tag: "<a released RustFS version>", pullPolicy: IfNotPresent}
+
 mode: distributed
 releaseChannel: stable
 externalUrl: https://observability.example.com

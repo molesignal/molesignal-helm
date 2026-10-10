@@ -33,7 +33,15 @@ GitHub organization or repository.
 
    Open a pull request from `initial-chart` to `main`. `Lint and test` runs `make check`,
    validates the manifests against the Kubernetes schemas and installs both topologies on kind. Fix what
-   it finds, then merge. The merge triggers the [release workflow](../.github/workflows/release.yaml),
+   it finds, then merge.
+
+   The install needs an application image. It uses `ghcr.io/molesignal/molesignal:latest`, and the
+   job **fails with a message saying so if that tag does not exist**; the application's release
+   workflow pushes `latest` only for stable-channel releases. Either publish an image built from the
+   application's `main` under that tag, or set the repository variable `MOLESIGNAL_IMAGE_TAG`
+   (*Settings → Secrets and variables → Actions → Variables*) to a tag that exists, such as the
+   `sha-<commit>` tag of such a build, or pass `image_tag` when you run the workflow by hand. Do not
+   merge before the install job has run and passed once: the merge publishes the chart. The merge triggers the [release workflow](../.github/workflows/release.yaml),
    which creates the `gh-pages` branch, the GitHub release `molesignal-0.1.0` and the package on ghcr.io.
 4. **Switch on GitHub Pages.** *Settings → Pages → Build and deployment → Source: Deploy from a
    branch → `gh-pages` / `/ (root)`*. After a minute

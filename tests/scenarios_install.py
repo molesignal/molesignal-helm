@@ -16,7 +16,7 @@ from harness import (
     unb64,
 )
 
-IMAGE = "ghcr.io/molesignal/molesignal:26.1.0.0"
+IMAGE = "ghcr.io/molesignal/molesignal:latest"
 FULL = "rel-molesignal"
 
 
@@ -56,7 +56,8 @@ def standalone_defaults() -> None:
     app = m.get("StatefulSet", FULL)
     main = container(app, "molesignal")
     env = env_of(main)
-    check(main["image"] == IMAGE, "runs the published image at the chart's appVersion", main["image"])
+    check(main["image"] == IMAGE, "runs the application image at its latest tag", main["image"])
+    check(main["imagePullPolicy"] == "Always", "and pulls it every time, since latest moves")
     check(main["args"] == ["--config", "/app/conf/config.toml"], "starts with the config file")
     check(env["MS_NODE_ROLES"]["value"] == '["standalone"]', "node role is standalone")
     check("MS_CLUSTER_ADVERTISE_ADDR" not in env and "POD_IP" not in env, "does not advertise a peer address")
@@ -172,8 +173,20 @@ def standalone_defaults() -> None:
     check(names == ["rustfs", "bucket-init"], "RustFS pod has the server and the bucket sidecar", str(names))
     rustfs = container(fs, "rustfs")
     sidecar = container(fs, "bucket-init")
-    check(rustfs["image"] == "rustfs/rustfs:1.0.1", "pins RustFS 1.0.1", rustfs["image"])
-    check(sidecar["image"] == "public.ecr.aws/aws-cli/aws-cli:2.37.12", "pins the AWS CLI image", sidecar["image"])
+    check(rustfs["image"] == "rustfs/rustfs:latest", "follows RustFS latest", rustfs["image"])
+    check(sidecar["image"] == "public.ecr.aws/aws-cli/aws-cli:latest", "follows the AWS CLI latest", sidecar["image"])
+    check(
+        rustfs["imagePullPolicy"] == "Always" and sidecar["imagePullPolicy"] == "Always",
+        "both are pulled every time",
+    )
+    check(
+        pgc["imagePullPolicy"] == "IfNotPresent",
+        "PostgreSQL 17 is pinned, so a cached image is fine",
+    )
+    check(
+        "waiting for RustFS (attempt" in sidecar["args"][0],
+        "the sidecar says why it is still waiting",
+    )
     check(
         sidecar["readinessProbe"]["exec"]["command"] == ["test", "-f", "/tmp/bucket-ready"],
         "the pod is ready only once the bucket exists",

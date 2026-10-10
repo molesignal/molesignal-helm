@@ -92,6 +92,15 @@ def metadata() -> None:
     values = json.loads(subprocess.run(["yq", "-o=json", ".", str(CHART / "values.yaml")], capture_output=True, text=True, check=True).stdout)
     check(re.fullmatch(r"\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?", chart["version"]) is not None, f"version {chart['version']} is SemVer")
     check(isinstance(chart["appVersion"], str) and chart["appVersion"], "appVersion is a string")
+    check(
+        chart["appVersion"] == "latest" and values["image"]["tag"] == "",
+        "the application image follows latest, through appVersion",
+    )
+    check(
+        values["rustfs"]["image"]["tag"] == "latest" and values["rustfs"]["bucketInit"]["image"]["tag"] == "latest",
+        "RustFS and the AWS CLI follow latest",
+    )
+    check(values["postgresql"]["image"]["tag"] == "17", "PostgreSQL stays on 17")
     images = chart["annotations"]["artifacthub.io/images"]
     expect = {
         f"{values['image']['repository']}:{chart['appVersion']}": "the application image at appVersion",

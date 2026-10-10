@@ -71,7 +71,7 @@ MUTATIONS = [
     ("checksum-includes-generated", "templates/_helpers.tpl",
      '{{- dict\n    "cipherKey"', '{{- dict "random" (randAlphaNum 8)\n    "cipherKey"', "install"),
     ("appversion-drifts-from-annotation", "Chart.yaml",
-     "image: ghcr.io/molesignal/molesignal:26.1.0.0", "image: ghcr.io/molesignal/molesignal:26.0.0.0", "guards"),
+     "image: ghcr.io/molesignal/molesignal:latest", "image: ghcr.io/molesignal/molesignal:stable", "guards"),
 ]
 
 

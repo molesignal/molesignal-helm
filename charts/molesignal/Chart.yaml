@@ -7,11 +7,11 @@ description: >-
 type: application
 
 # The chart is versioned on its own (SemVer) and released independently of the
-# application. Bump `version` for every chart change; bump `appVersion` (and the
-# `artifacthub.io/images` annotation below) only when the default image moves.
-# See docs/versioning.md.
+# application. Bump `version` for every chart change. `appVersion` is the default
+# image tag, and that is `latest`: the chart follows the application's newest image
+# rather than a pinned release. See docs/versioning.md.
 version: 0.1.0
-appVersion: "26.1.0.0"
+appVersion: "latest"
 
 kubeVersion: ">=1.27.0-0"
 
@@ -42,16 +42,16 @@ annotations:
   artifacthub.io/prerelease: "true"
   artifacthub.io/images: |
     - name: molesignal
-      image: ghcr.io/molesignal/molesignal:26.1.0.0
+      image: ghcr.io/molesignal/molesignal:latest
       platforms:
         - linux/amd64
         - linux/arm64
     - name: postgresql
       image: postgres:17
     - name: rustfs
-      image: rustfs/rustfs:1.0.1
+      image: rustfs/rustfs:latest
     - name: aws-cli
-      image: public.ecr.aws/aws-cli/aws-cli:2.37.12
+      image: public.ecr.aws/aws-cli/aws-cli:latest
   artifacthub.io/links: |
     - name: Documentation
       url: https://github.com/molesignal/molesignal-helm/tree/main/docs
