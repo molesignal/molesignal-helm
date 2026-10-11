@@ -1,0 +1,61 @@
+apiVersion: v1
+entries:
+  molesignal:
+  - annotations:
+      artifacthub.io/category: monitoring-logging
+      artifacthub.io/changes: |
+        - kind: added
+          description: Initial release of the chart, with standalone and distributed modes
+        - kind: added
+          description: Optional bundled PostgreSQL and RustFS for evaluation
+      artifacthub.io/containsSecurityUpdates: "false"
+      artifacthub.io/images: |
+        - name: molesignal
+          image: ghcr.io/molesignal/molesignal:latest
+          platforms:
+            - linux/amd64
+            - linux/arm64
+        - name: postgresql
+          image: postgres:17
+        - name: rustfs
+          image: rustfs/rustfs:latest
+        - name: aws-cli
+          image: public.ecr.aws/aws-cli/aws-cli:latest
+      artifacthub.io/license: Apache-2.0
+      artifacthub.io/links: |
+        - name: Documentation
+          url: https://github.com/molesignal/molesignal-helm/tree/main/docs
+        - name: Application
+          url: https://github.com/molesignal/molesignal
+      artifacthub.io/prerelease: "true"
+    apiVersion: v2
+    appVersion: latest
+    created: "2026-10-11T04:05:00.820953942Z"
+    description: Self-hosted, OpenTelemetry-native observability. Logs, metrics and
+      traces on one Parquet / DataFusion engine, with PostgreSQL for metadata and
+      any S3-compatible object store for data.
+    digest: 9dad8468bfe7f1b8346446ef8dcd7e6bd5e874e759362cca54ff6de8f24060b2
+    home: https://www.molesignal.com
+    icon: https://www.molesignal.com/icon-512.png
+    keywords:
+    - observability
+    - opentelemetry
+    - otlp
+    - logs
+    - metrics
+    - traces
+    - apm
+    - monitoring
+    kubeVersion: '>=1.27.0-0'
+    maintainers:
+    - name: MoleSignal
+      url: https://github.com/molesignal
+    name: molesignal
+    sources:
+    - https://github.com/molesignal/molesignal-helm
+    - https://github.com/molesignal/molesignal
+    type: application
+    urls:
+    - https://github.com/molesignal/molesignal-helm/releases/download/molesignal-0.1.0/molesignal-0.1.0.tgz
+    version: 0.1.0
+generated: "2026-10-11T04:05:00.820964332Z"
