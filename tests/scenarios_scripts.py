@@ -93,4 +93,129 @@ def ci_install() -> None:
         check(dump_at < uninstall_at, "the evidence is collected before the release is removed")
 
 
-SCENARIOS = [ci_install]
+
+
+# ── steps of the release workflow ─────────────────────────────────────────────
+
+
+def workflow_step(name: str) -> str:
+    """The `run:` script of a step of release.yaml, exactly as GitHub Actions would run it."""
+    out = subprocess.run(
+        ["yq", f'.jobs.release.steps[] | select(.name == "{name}") | .run', str(ROOT / ".github" / "workflows" / "release.yaml")],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert out.stdout.strip() and out.stdout.strip() != "null", f"no step named {name!r}"
+    return out.stdout
+
+
+def git(cwd: Path, *args: str, check_: bool = True) -> str:
+    proc = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True)
+    if check_ and proc.returncode != 0:
+        raise AssertionError(f"git {' '.join(args)}: {proc.stderr.strip()}")
+    return proc.stdout.strip()
+
+
+def checkout_like_actions(tmp: Path, detached: bool) -> tuple[Path, Path]:
+    """A bare 'remote' with a main branch, and a workspace checked out the way actions/checkout
+    leaves it: on a local branch for a push event, detached for a pull request."""
+    remote, work = tmp / "remote.git", tmp / "work"
+    subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(remote)], check=True)
+    seed = tmp / "seed"
+    subprocess.run(["git", "init", "-q", "-b", "main", str(seed)], check=True)
+    (seed / "charts" / "foo").mkdir(parents=True)
+    (seed / "charts" / "foo" / "Chart.yaml").write_text("name: foo\n")
+    git(seed, "add", ".")
+    git(seed, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "first")
+    git(seed, "remote", "add", "origin", str(remote))
+    git(seed, "push", "-q", "origin", "main")
+    subprocess.run(["git", "clone", "-q", str(remote), str(work)], check=True)
+    git(work, "config", "user.name", "t")
+    git(work, "config", "user.email", "t@t")
+    if detached:
+        git(work, "checkout", "-q", "--detach", "origin/main")
+    return remote, work
+
+
+def run_step(script: str, cwd: Path, env_extra: dict[str, str]) -> subprocess.CompletedProcess:
+    # GitHub runs `run:` steps as `bash -e {0}`
+    return subprocess.run(["bash", "-e", "-c", script], cwd=cwd, env={**os.environ, **env_extra}, capture_output=True, text=True)
+
+
+def pages_branch() -> None:
+    section("release workflow · creating the gh-pages branch (a push leaves a branch checked out, a pull request a detached HEAD)")
+    script = workflow_step("Make sure the gh-pages branch exists")
+    for detached in (False, True):
+        label = "detached HEAD" if detached else "on a branch"
+        with tempfile.TemporaryDirectory() as raw:
+            tmp = Path(raw)
+            remote, work = checkout_like_actions(tmp, detached)
+            before_head = git(work, "rev-parse", "HEAD")
+            before_ref = git(work, "symbolic-ref", "--quiet", "--short", "HEAD", check_=False)
+            proc = run_step(script, work, {"PAGES_DOMAIN": "charts.example.com"})
+            check(proc.returncode == 0, f"{label}: the step succeeds", (proc.stdout + proc.stderr)[-400:])
+            heads = git(remote, "for-each-ref", "--format=%(refname:short)", "refs/heads")
+            check("gh-pages" in heads.split(), f"{label}: gh-pages is pushed", heads)
+            if "gh-pages" in heads.split():
+                files = git(remote, "ls-tree", "--name-only", "gh-pages").split()
+                check(sorted(files) == [".nojekyll", "CNAME", "README.md"], f"{label}: it holds the README, the CNAME and .nojekyll", str(files))
+                check(git(remote, "show", "gh-pages:CNAME") == "charts.example.com", f"{label}: the CNAME is the Pages domain")
+                check(
+                    git(remote, "rev-list", "--count", "gh-pages") == "1" and git(remote, "rev-list", "--parents", "-n1", "gh-pages").count(" ") == 0,
+                    f"{label}: it is an orphan branch with one commit",
+                )
+            check(git(work, "rev-parse", "HEAD") == before_head, f"{label}: the workspace is back on the commit it started from")
+            check(
+                git(work, "symbolic-ref", "--quiet", "--short", "HEAD", check_=False) == before_ref,
+                f"{label}: and on the same branch (or still detached)",
+            )
+            check((work / "charts" / "foo" / "Chart.yaml").exists(), f"{label}: the working tree has its files again (the chart is there to be released)")
+            again = run_step(script, work, {"PAGES_DOMAIN": "charts.example.com"})
+            check(again.returncode == 0 and "gh-pages exists" in again.stdout, f"{label}: a second run finds the branch and leaves it alone")
+            check(git(remote, "rev-list", "--count", "gh-pages") == "1", f"{label}: without adding a commit")
+
+
+def ghcr_step() -> None:
+    section("release workflow · publishing to GHCR, with a stand-in for helm")
+    script = workflow_step("Publish to GHCR (OCI)")
+    shim = """#!/usr/bin/env bash
+echo "helm $*" >> "$CALLS"
+case "$1 $2" in
+  "registry login") cat > /dev/null ;;
+  "package "*) mkdir -p "$4" 2>/dev/null; : > "$4/foo-1.2.3.tgz" ;;
+  "show chart") printf 'name: foo\\nversion: 1.2.3\\n' ;;
+  "pull "*) [ "${FAKE_PUBLISHED:-}" = 1 ] || exit 1 ;;
+esac
+exit 0
+"""
+    for published in (False, True):
+        with tempfile.TemporaryDirectory() as raw:
+            tmp = Path(raw)
+            (tmp / "bin").mkdir()
+            (tmp / "bin" / "helm").write_text(shim)
+            (tmp / "bin" / "helm").chmod(0o755)
+            (tmp / "charts" / "foo").mkdir(parents=True)
+            calls = tmp / "calls.log"
+            env = {
+                "PATH": f"{tmp / 'bin'}:{os.environ['PATH']}",
+                "CALLS": str(calls),
+                "OWNER": "MoleSignal",
+                "ACTOR": "someone",
+                "TOKEN": "secret-token",
+                "FAKE_PUBLISHED": "1" if published else "0",
+            }
+            proc = run_step(script, tmp, env)
+            log = calls.read_text().splitlines() if calls.exists() else []
+            label = "the version is already on ghcr.io" if published else "a new version"
+            check(proc.returncode == 0, f"{label}: the step succeeds", (proc.stdout + proc.stderr)[-300:])
+            check(any(c.startswith("helm registry login ghcr.io --username someone --password-stdin") for c in log), f"{label}: logs in to ghcr.io with the token on stdin, not on the command line")
+            check(not any("secret-token" in c for c in log), f"{label}: the token never appears in a command")
+            pushed = [c for c in log if c.startswith("helm push ")]
+            if published:
+                check(not pushed and "already on ghcr.io" in proc.stdout, f"{label}: leaves it alone")
+            else:
+                check(pushed == ["helm push dist/foo-1.2.3.tgz oci://ghcr.io/molesignal/charts"], f"{label}: pushes it, to the lower-cased owner", str(pushed))
+
+
+SCENARIOS = [ci_install, pages_branch, ghcr_step]
