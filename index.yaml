@@ -4,6 +4,69 @@ entries:
   - annotations:
       artifacthub.io/category: monitoring-logging
       artifacthub.io/changes: |
+        - kind: fixed
+          description: Standalone pods, the default, never became ready because the readiness probe asked a path that needs a login
+        - kind: fixed
+          description: The bucket sidecar pulls the AWS CLI from Docker Hub, because the anonymous limit of ECR Public could hold up an install
+        - kind: changed
+          description: releaseChannel defaults to stable, the channel of the default image
+        - kind: fixed
+          description: Examples and documentation no longer name settings the application has removed or renamed
+        - kind: added
+          description: README and install notes explain client addresses behind an ingress
+      artifacthub.io/containsSecurityUpdates: "false"
+      artifacthub.io/images: |
+        - name: molesignal
+          image: ghcr.io/molesignal/molesignal:latest
+          platforms:
+            - linux/amd64
+            - linux/arm64
+        - name: postgresql
+          image: postgres:17
+        - name: rustfs
+          image: rustfs/rustfs:latest
+        - name: aws-cli
+          image: amazon/aws-cli:latest
+      artifacthub.io/license: Apache-2.0
+      artifacthub.io/links: |
+        - name: Documentation
+          url: https://github.com/molesignal/molesignal-helm/tree/main/docs
+        - name: Application
+          url: https://github.com/molesignal/molesignal
+      artifacthub.io/prerelease: "true"
+    apiVersion: v2
+    appVersion: latest
+    created: "2026-10-31T09:05:10.961070704Z"
+    description: Self-hosted, OpenTelemetry-native observability. Logs, metrics and
+      traces on one Parquet / DataFusion engine, with PostgreSQL for metadata and
+      any S3-compatible object store for data.
+    digest: e2867112a94796e76117ec1a1fcd3ba9a149aeba9a831c8afd578fa812d5fdad
+    home: https://www.molesignal.com
+    icon: https://www.molesignal.com/icon-512.png
+    keywords:
+    - observability
+    - opentelemetry
+    - otlp
+    - logs
+    - metrics
+    - traces
+    - apm
+    - monitoring
+    kubeVersion: '>=1.27.0-0'
+    maintainers:
+    - name: MoleSignal
+      url: https://github.com/molesignal
+    name: molesignal
+    sources:
+    - https://github.com/molesignal/molesignal-helm
+    - https://github.com/molesignal/molesignal
+    type: application
+    urls:
+    - https://github.com/molesignal/molesignal-helm/releases/download/molesignal-0.2.0/molesignal-0.2.0.tgz
+    version: 0.2.0
+  - annotations:
+      artifacthub.io/category: monitoring-logging
+      artifacthub.io/changes: |
         - kind: added
           description: Initial release of the chart, with standalone and distributed modes
         - kind: added
@@ -58,4 +121,4 @@ entries:
     urls:
     - https://github.com/molesignal/molesignal-helm/releases/download/molesignal-0.1.0/molesignal-0.1.0.tgz
     version: 0.1.0
-generated: "2026-10-11T04:05:00.820964332Z"
+generated: "2026-10-31T09:05:10.961096893Z"
