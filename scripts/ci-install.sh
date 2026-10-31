@@ -87,14 +87,19 @@ install_molesignal() {
 
 # ── the server's API ──────────────────────────────────────────────────────────
 
-# api METHOD PATH [JSON]: prints the body of the answer, and fails with it on an HTTP error.
+# api METHOD PATH [JSON]: prints the body of the answer. On an error it prints that to stderr and fails.
 api() {
-  local method="$1" path="$2" body="${3:-}"
+  local method="$1" path="$2" body="${3:-}" answer
   local args=(--silent --show-error --fail-with-body --max-time 30 --request "${method}"
     --cookie "${cookies}" --cookie-jar "${cookies}" --header "Content-Type: application/json")
   [[ -z "${session_token}" ]] || args+=(--header "Authorization: Bearer ${session_token}")
   [[ -z "${body}" ]] || args+=(--data "${body}")
-  curl "${args[@]}" "http://127.0.0.1:${api_port}/api/v1${path}"
+  if answer="$(curl "${args[@]}" "http://127.0.0.1:${api_port}/api/v1${path}" 2>&1)"; then
+    printf '%s' "${answer}"
+  else
+    echo "${method} ${path} failed: ${answer}" >&2
+    return 1
+  fi
 }
 
 # Up to and including application 26.2.0.0 signing in answers with a token for the Authorization
@@ -102,7 +107,7 @@ api() {
 sign_in() {
   local password="$1" answer
   answer="$(api POST /auth/signin "$(jq -n --arg email "${server_email}" --arg password "${password}" \
-    '{email: $email, password: $password}')")" || { echo "cannot sign in: ${answer}" >&2; return 1; }
+    '{email: $email, password: $password}')")" || return 1
   session_token="$(jq -r '.token // empty' <<<"${answer}")"
 }
 
@@ -149,8 +154,7 @@ run_check() {
   local name="$1" location="$2" spec="$3" created monitor revision results outcome attempt
   created="$(api POST /synthetics/monitors "$(jq -n --arg name "${name}" --arg location "${location}" --argjson spec "${spec}" \
     '{name: $name, spec: $spec, schedule: {kind: "interval", every_seconds: 300}, timeout_millis: 60000,
-      location_policy: {kind: "any"}, location_ids: [$location], team_id: null, escalation_policy_id: null}')")" \
-    || { echo "cannot create the check ${name}: ${created}" >&2; return 1; }
+      location_policy: {kind: "any"}, location_ids: [$location], team_id: null, escalation_policy_id: null}')")" || return 1
   monitor="$(jq -r .monitor.id <<<"${created}")"
   revision="$(jq -r .revision.id <<<"${created}")"
   api POST "/synthetics/monitors/${monitor}/revisions/${revision}/test" >/dev/null || return 1
@@ -187,7 +191,8 @@ run_checks() {
 same_agent_after_restart() {
   local full="$1" location="$2" before="$3" pod="$1-0" stopped="" agents="" attempt
   kubectl --namespace "${agent_ns}" delete pod "${pod}" --wait=true --timeout=2m || return 1
-  stopped="$(api GET "/synthetics/locations/${location}/agents" | jq -r --arg pod "${pod}" '.[] | select(.hostname == $pod) | .last_heartbeat_at')"
+  agents="$(api GET "/synthetics/locations/${location}/agents")" || return 1
+  stopped="$(jq -r --arg pod "${pod}" '.[] | select(.hostname == $pod) | .last_heartbeat_at' <<<"${agents}")"
   kubectl --namespace "${agent_ns}" rollout status "statefulset/${full}" --timeout=5m || return 1
 
   for ((attempt = 0; attempt < poll_attempts; attempt++)); do
@@ -211,15 +216,15 @@ same_agent_after_restart() {
 
 # One values file in charts/probe-agent/ci. Its name says which kind of token it registers with.
 probe_agent_scenario() {
-  local values="$1" kind release full location instructions token ca replicas agents
+  local values="$1" kind release full answer location instructions token ca replicas agents
   kind="$(basename "${values}" -values.yaml)"
   release="${kind}"
   full="${release}-probe-agent"
   echo "==> ${values}: Agent image tag ${tag}"
 
-  location="$(api POST /synthetics/locations "$(jq -n --arg code "${kind}" \
-    '{name: $code, code: $code, egress_policy: {allow_private_networks: true}}')" | jq -r .id)"
-  [[ -n "${location}" ]] || { echo "cannot create a location" >&2; return 1; }
+  answer="$(api POST /synthetics/locations "$(jq -n --arg code "${kind}" \
+    '{name: $code, code: $code, egress_policy: {allow_private_networks: true}}')")" || return 1
+  location="$(jq -r .id <<<"${answer}")"
 
   case "${kind}" in
     one-time-token)

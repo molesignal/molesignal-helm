@@ -70,6 +70,8 @@ if path == "/auth/signin":
 if fail == "cookies" and not ("--cookie" in args and "--cookie-jar" in args):
     refuse("not signed in: the session is in a cookie")
 if path == "/synthetics/locations":
+    if fail == "location":
+        refuse("the location is refused")
     answer({"id": "location-" + json.loads(data)["code"]})
 if path.endswith("/register-tokens"):
     answer({"register_token": "one-time-secret", "ca_certificate_pem": CA})
@@ -250,6 +252,7 @@ def ci_install_probe_agent() -> None:
 
     for fail, what in (
         ("signin", "cannot sign in"),
+        ("location", "the server refuses the location"),
         ("agent-install", "an Agent does not install"),
         ("offline", "Agents never come online"),
         ("shared-identity", "two replicas share an identity"),
@@ -267,6 +270,8 @@ def ci_install_probe_agent() -> None:
         check(any(c.startswith("kubectl delete namespace ci-probe-agent") for c in calls), f"and still cleans up when {what}")
         if fail == "offline":
             check("online Agents in the location, got" in output, "and says which Agents it found, at the step that waits for them", output[-300:])
+        if fail == "location":
+            check("the location is refused" in output, "and prints what the server answered", output[-300:])
 
     status, calls, _ = run_script("browser-check", ("probe-agent",))
     check(
