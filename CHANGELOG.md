@@ -10,16 +10,23 @@ breaking changes; they are collected under **Upgrade notes**.
 
 ## [Unreleased]
 
+## [probe-agent 0.1.1] - 2026-10-31
+
+Deploys `ghcr.io/molesignal/probe-agent:latest`, and has the same requirements as 0.1.0.
+
+### Changed
+
+- The README only says which application versions the chart needs, and no longer which had been published.
+
+### Upgrade notes
+
+None: nothing but the README changed.
+
 ## [probe-agent 0.1.0] - 2026-10-31
 
 First release. Deploys `ghcr.io/molesignal/probe-agent:latest`. Needs an application newer than
 26.2.0.0, on the server and in the Agent image: in that release the server cannot register an Agent,
 and an Agent never gets past `registered`.
-
-> **Compatibility.** No such version had been published when this chart was released, so `latest` gives
-> Agents that stay in `Init` until one is. The install on kind fails at registration on the published
-> images. It passed only on images with those two bugs patched, which is what the list below was
-> checked against.
 
 ### Added
 

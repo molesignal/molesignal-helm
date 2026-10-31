@@ -9,7 +9,7 @@ type: application
 # The chart is versioned on its own (SemVer), apart from the molesignal chart and from
 # the application. Bump `version` for every chart change. `appVersion` is the default
 # image tag, and that is `latest`, like the molesignal chart. See docs/versioning.md.
-version: 0.1.0
+version: 0.1.1
 appVersion: "latest"
 
 kubeVersion: ">=1.27.0-0"
@@ -47,5 +47,5 @@ annotations:
     - name: Application
       url: https://github.com/molesignal/molesignal
   artifacthub.io/changes: |
-    - kind: added
-      description: First release. Probe Agents as a StatefulSet that registers once per replica and keeps its identity on a volume
+    - kind: changed
+      description: The README only says which application versions the chart needs, and no longer which had been published

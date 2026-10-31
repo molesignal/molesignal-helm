@@ -67,7 +67,7 @@ helm install probe-agent molesignal/probe-agent --namespace probes \
   --set registration.existingSecret=probe-agent-registration
 ```
 
-or from the OCI registry, `oci://ghcr.io/molesignal/charts/probe-agent --version 0.1.0`.
+or from the OCI registry, `oci://ghcr.io/molesignal/charts/probe-agent --version 0.1.1`.
 
 `helm test probe-agent --namespace probes` checks the endpoint and the CA by trying to register with
 a token the server has to refuse. The Agents then appear in **Synthetics → Agents**. Their location
@@ -148,9 +148,8 @@ you check. Going over the limit kills a Chromium process first, and that check f
   `image.digest`) and go back to `pullPolicy: IfNotPresent` for anything beyond trying the chart out.
 - **Versions.** The chart needs an application newer than 26.2.0.0, on the server and in the Agent
   image. In 26.2.0.0 the server cannot register an Agent, and an Agent never gets past `registered`.
-  No such version had been published when this version of the chart was released. Until one is, `latest`
-  gives Agents that stay in `Init`. An Agent older than the server's features only gets the checks it
-  can run; see the synthetics documentation.
+  An Agent older than the server's features only gets the checks it can run; see the synthetics
+  documentation.
 - **Security context.** The defaults pass the `restricted` Pod Security Standard, sysctl included.
 
 ## Troubleshooting
