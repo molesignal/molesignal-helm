@@ -190,19 +190,18 @@ same_agent_after_restart() {
   stopped="$(api GET "/synthetics/locations/${location}/agents" | jq -r --arg pod "${pod}" '.[] | select(.hostname == $pod) | .last_heartbeat_at')"
   kubectl --namespace "${agent_ns}" rollout status "statefulset/${full}" --timeout=5m || return 1
 
-  kubectl --namespace "${agent_ns}" logs "${pod}" --container register | grep "already registered" \
-    || { echo "${pod} did not find its identity" >&2; return 1; }
-
   for ((attempt = 0; attempt < poll_attempts; attempt++)); do
     agents="$(api GET "/synthetics/locations/${location}/agents")" || return 1
     if jq -e --arg pod "${pod}" --argjson stopped "${stopped}" \
       'any(.[]; .hostname == $pod and .status == "online" and .last_heartbeat_at > $stopped)' <<<"${agents}" >/dev/null; then
-      if [[ "$(jq -c '[.[].id] | sort' <<<"${agents}")" == "$(jq -c '[.[].id] | sort' <<<"${before}")" ]]; then
-        echo "${pod} came back as the same Agent"
-        return 0
+      if [[ "$(jq -c '[.[].id] | sort' <<<"${agents}")" != "$(jq -c '[.[].id] | sort' <<<"${before}")" ]]; then
+        echo "the Agents changed: ${before} became ${agents}" >&2
+        return 1
       fi
-      echo "the Agents changed: ${before} became ${agents}" >&2
-      return 1
+      kubectl --namespace "${agent_ns}" logs "${pod}" --container register | grep "already registered" \
+        || { echo "${pod} did not find its identity" >&2; return 1; }
+      echo "${pod} came back as the same Agent"
+      return 0
     fi
     sleep "${poll_seconds}"
   done

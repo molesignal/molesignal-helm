@@ -67,6 +67,8 @@ if path == "/auth/signin":
     if fail == "signin":
         refuse("wrong password")
     answer({"token": "session-token"} if fail != "cookies" else {"login": {}})
+if fail == "cookies" and not ("--cookie" in args and "--cookie-jar" in args):
+    refuse("not signed in: the session is in a cookie")
 if path == "/synthetics/locations":
     answer({"id": "location-" + json.loads(data)["code"]})
 if path.endswith("/register-tokens"):
@@ -263,6 +265,8 @@ def ci_install_probe_agent() -> None:
         removed = [i for i, c in enumerate(calls) if c.startswith("helm uninstall ")]
         check(described and min(described) < min(removed), f"and prints the evidence before the clean-up when {what}")
         check(any(c.startswith("kubectl delete namespace ci-probe-agent") for c in calls), f"and still cleans up when {what}")
+        if fail == "offline":
+            check("online Agents in the location, got" in output, "and says which Agents it found, at the step that waits for them", output[-300:])
 
     status, calls, _ = run_script("browser-check", ("probe-agent",))
     check(

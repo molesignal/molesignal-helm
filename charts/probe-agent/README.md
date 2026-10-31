@@ -4,7 +4,8 @@ A [MoleSignal](https://www.molesignal.com) server runs synthetic checks from its
 Probe Agent runs them from somewhere else: a private network, a region, an edge site. This chart
 runs Agents on Kubernetes. They only open outbound connections, so nothing needs to reach them.
 
-The chart does not deploy the server. That is the [`molesignal`](../molesignal) chart, in this
+The chart does not deploy the server. That is the
+[`molesignal`](https://github.com/molesignal/molesignal-helm/tree/main/charts/molesignal) chart, in this
 cluster or anywhere else. Each chart has its own version (see
 [versioning](https://github.com/molesignal/molesignal-helm/blob/main/docs/versioning.md)).
 

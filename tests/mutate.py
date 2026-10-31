@@ -91,7 +91,7 @@ PROBE_AGENT_MUTATIONS = [
      '{{- include "probe-agent.volumeMountPath" . }}/state', '{{- include "probe-agent.volumeMountPath" . }}', "probe_agent"),
     ("agent-runs-elsewhere", "templates/statefulset.yaml",
      "            - --state-dir\n            - {{ $stateDir }}\n", "", "probe_agent"),
-    ("identity-not-on-the-volume", "templates/statefulset.yaml",
+    ("loses-dumb-init", "templates/statefulset.yaml",
      '''        - name: probe-agent
           image: {{ include "probe-agent.image" . }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
@@ -202,7 +202,7 @@ PROBE_AGENT_MUTATIONS = [
     - name: net.ipv4.ping_group_range
       value: "0 2147483647"
 ''', "", "probe_agent"),
-    ("token-mounted-api", "values.yaml",
+    ("service-account-token-mounted", "values.yaml",
      "  automount: false", "  automount: true", "probe_agent"),
     ("no-home-for-chromium", "templates/statefulset.yaml",
      "            - name: home\n              mountPath: /home/molesignal\n", "", "probe_agent"),
@@ -228,9 +228,7 @@ PROBE_AGENT_MUTATIONS = [
 
 # The same for scripts/ci-install.sh: name, exact text, replacement. The scripts module covers them.
 SCRIPT_MUTATIONS = [
-    ("online-check-skipped",
-     'agents="$(wait_for_agents "${location}" "${replicas}")" || return 1',
-     'agents="$(wait_for_agents "${location}" "${replicas}")" || true'),
+    ("offline-agents-count", 'length == $count and all(.[]; .status == "online")', "length == $count"),
     ("shared-identity-unnoticed",
      '''  [[ "$(jq \'[.[].id] | unique | length\' <<<"${agents}")" == "${replicas}" ]] || { echo "Agents share an identity: ${agents}" >&2; return 1; }
 ''', ""),
@@ -239,16 +237,14 @@ SCRIPT_MUTATIONS = [
     ("unhealthy-check-passes", '[[ "${outcome}" == "healthy" ]] && return 0', "return 0"),
     ("restart-not-tried", '  same_agent_after_restart "${full}" "${location}" "${agents}" || return 1\n', ""),
     ("new-identity-unnoticed",
-     '''      echo "the Agents changed: ${before} became ${agents}" >&2
-      return 1
-''', '''      echo "the Agents changed: ${before} became ${agents}" >&2
-      return 0
+     '''        echo "the Agents changed: ${before} became ${agents}" >&2
+        return 1
+''', '''        echo "the Agents changed: ${before} became ${agents}" >&2
 '''),
     ("heartbeat-not-awaited", '.status == "online" and .last_heartbeat_at > $stopped', '.status == "online"'),
     ("init-log-not-read",
-     '''  kubectl --namespace "${agent_ns}" logs "${pod}" --container register | grep "already registered" \\
-    || { echo "${pod} did not find its identity" >&2; return 1; }
-
+     '''      kubectl --namespace "${agent_ns}" logs "${pod}" --container register | grep "already registered" \\
+        || { echo "${pod} did not find its identity" >&2; return 1; }
 ''', ""),
     ("agent-failure-swallowed",
      '''        echo "::error title=probe-agent::${values} failed"
