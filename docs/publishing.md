@@ -50,10 +50,9 @@ GitHub organization or repository.
    harmless, but while `main` is the source the repository itself is what gets published; change the
    source as soon as `gh-pages` exists. The release workflow puts the same `CNAME`, and a
    `.nojekyll`, on `gh-pages` when it creates it, so the domain survives the switch.)
-5. **Make the package public.** A package pushed by a workflow starts out private. In the
-   organization: *Packages → `charts/molesignal` → Package settings → Change visibility →
-   Public*. Until then `helm pull` needs a login. **Every new chart needs this once**, after its first
-   release: `charts/probe-agent` too.
+5. **Check that the package is public.** `charts/probe-agent` could be pulled without a login right after
+   its first release. If `helm pull` asks for one, change it in the organization: *Packages →
+   `charts/<chart>` → Package settings → Change visibility → Public*. Check this once for every new chart.
 6. **Point `charts.molesignal.com` at it** (below).
 7. **Check it from a machine that is not yours:**
 
