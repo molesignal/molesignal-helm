@@ -232,7 +232,7 @@ SCRIPT_MUTATIONS = [
     ("shared-identity-unnoticed",
      '''  [[ "$(jq \'[.[].id] | unique | length\' <<<"${agents}")" == "${replicas}" ]] || { echo "Agents share an identity: ${agents}" >&2; return 1; }
 ''', ""),
-    ("checks-not-run", '  run_checks "${location}" || return 1\n', ""),
+    ("checks-not-run", '  run_checks "${kind}" "${location}" || return 1\n', ""),
     ("browser-check-not-run", '  run_check "${kind}-browser" "${location}"', '  true "${kind}-browser" "${location}"'),
     ("check-names-collide", '  run_check "${kind}-http" "${location}"', '  run_check http "${location}"'),
     ("agent-waits-as-long-as-the-server", '--wait --timeout "${agent_timeout}"', '--wait --timeout "${timeout}"'),
