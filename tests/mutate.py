@@ -235,7 +235,7 @@ SCRIPT_MUTATIONS = [
     ("checks-not-run", '  run_checks "${location}" || return 1\n', ""),
     ("browser-check-not-run", '  run_check browser "${location}"', '  true browser "${location}"'),
     ("unhealthy-check-passes", '[[ "${outcome}" == "healthy" ]] && return 0', "return 0"),
-    ("restart-not-tried", '  same_agent_after_restart "${full}" "${location}" "${agents}" || return 1\n', ""),
+    ("restart-not-tried", '  same_agent_after_restart "${full}" "${location}" "${agents}" "ci-${kind}" || return 1\n', ""),
     ("new-identity-unnoticed",
      '''        echo "the Agents changed: ${before} became ${agents}" >&2
         return 1
