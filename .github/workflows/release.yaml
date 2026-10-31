@@ -75,7 +75,7 @@ jobs:
           version: ${{ env.HELM_VERSION }}
 
       - name: Publish to GitHub Pages
-        uses: helm/chart-releaser-action@v1.7.0
+        uses: helm/chart-releaser-action@v1.8.0
         with:
           config: cr.yaml
           skip_existing: true
