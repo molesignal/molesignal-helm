@@ -10,6 +10,47 @@ breaking changes; they are collected under **Upgrade notes**.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-31
+
+Deploys `ghcr.io/molesignal/molesignal:latest`, which is the application's 26.2.0.0 today. Written
+against that release and against the settings the application's `main` has renamed since.
+
+### Changed
+
+- The `bucket-init` sidecar of the bundled RustFS pulls `amazon/aws-cli` from Docker Hub, where the
+  chart's other public images live. It is the same image as `public.ecr.aws/aws-cli/aws-cli`, but ECR
+  Public answered anonymous pulls from CI's shared addresses with `429 Too Many Requests`, and that
+  held up the whole install: MoleSignal pods wait for RustFS, and RustFS is ready only once the sidecar
+  has created the bucket.
+- `releaseChannel` defaults to `stable`, the channel of the default image: `latest` only moves with
+  stable-channel releases.
+
+### Fixed
+
+- **`standalone` pods, the default, never became ready.** The readiness probe asked `/api/v1/readyz`,
+  which the application's full HTTP server answers with 401 without a login. It now asks
+  `/api/v1/healthz`, like the router.
+- The examples and docs no longer name settings the application has removed or renamed after 26.2.0.0
+  (`compactor.retention_days`, `cache.object.max_bytes`, `intake.max_buffer_memory_mb`). Most tables of
+  its configuration ignore unknown keys, so those would have stopped working without a word.
+  `examples/production.yaml` no longer sets the retention, which was the default of 30 days anyway.
+- The README no longer says that `latest` cannot be pulled. It says which application versions the
+  chart needs: 26.2.0.0 or later.
+
+### Added
+
+- The README, the install notes and the ingress examples explain how to get real client addresses
+  behind an ingress.
+
+### Upgrade notes
+
+- With `global.imageRegistry`, mirror the sidecar's image as `<registry>/amazon/aws-cli` instead of
+  `<registry>/aws-cli/aws-cli`, or set `rustfs.bucketInit.image.repository`.
+- `RELEASE_CHANNEL` changes from `alpha` to `stable` unless you set `releaseChannel`, so the upgrade
+  rolls the pods. It is metadata: `/api/v1/healthz` reports it.
+- If your `config` sets `compactor.retention_days`, `cache.object.max_bytes` or
+  `intake.max_buffer_memory_mb`, check them against the `conf/config.toml` of the image you run.
+
 ## [0.1.0] - 2026-10-11
 
 First release. Deploys MoleSignal from `ghcr.io/molesignal/molesignal:latest`, written against the

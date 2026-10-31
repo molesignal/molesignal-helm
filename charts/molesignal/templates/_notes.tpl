@@ -20,6 +20,9 @@ MoleSignal {{ .Chart.AppVersion }} was installed as release "{{ .Release.Name }}
 
      {{ ternary "https" "http" (not (empty $.Values.ingress.tls)) }}://{{ .host }}
 {{- end }}
+
+   Behind an ingress every user counts as the controller's address until you list its pods as
+   trusted proxies: in the `_sys` organization, Settings > Client IP recognition.
 {{- else }}
 
      kubectl --namespace {{ $ns }} port-forward svc/{{ $front }} {{ $httpPort }}:{{ $httpPort }}

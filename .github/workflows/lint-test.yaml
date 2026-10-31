@@ -3,14 +3,17 @@
 #   static   no cluster: helm lint, the generated-docs check, the render tests, the
 #            mutation tests, and a schema validation of the rendered manifests
 #   install  a real install on a throw-away kind cluster, for each values file in
-#            charts/molesignal/ci, followed by `helm test`. Runs when the chart changed,
-#            and fails if the application image it would install does not exist.
+#            charts/molesignal/ci, followed by `helm test`. Runs when the chart changed and
+#            once a week, because the chart follows images that move without a change here.
+#            Fails if the application image it would install does not exist.
 name: Lint and test
 
 on:
   pull_request:
   push:
     branches: [main]
+  schedule:
+    - cron: "17 3 * * 1"
   workflow_dispatch:
     inputs:
       install_all:
@@ -109,10 +112,10 @@ jobs:
         with:
           version: ${{ env.CT_VERSION }}
 
-      - name: Find out whether the chart changed
+      - name: Find out whether to install
         id: changed
         run: |
-          if [[ "${{ inputs.install_all }}" == "true" ]]; then
+          if [[ "${{ github.event_name }}" == "schedule" || "${{ inputs.install_all }}" == "true" ]]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
           elif [[ -n "$(ct list-changed --config ct.yaml)" ]]; then
             echo "run=true" >> "$GITHUB_OUTPUT"

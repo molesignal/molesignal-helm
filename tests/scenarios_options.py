@@ -32,7 +32,7 @@ def scheduling() -> None:
         "securityContext": {"allowPrivilegeEscalation": False},
         "podAnnotations": {"team": "obs"},
         "podLabels": {"tier": "telemetry"},
-        "extraEnv": [{"name": "MS_COMPACTOR_RETENTION_DAYS", "value": "90"}],
+        "extraEnv": [{"name": "MS_COMPACTOR_INTERVAL_SECS", "value": "600"}],
         "extraEnvFrom": [{"secretRef": {"name": "more"}}],
         "extraVolumes": [{"name": "ca", "configMap": {"name": "ca-bundle"}}],
         "extraObjects": [{"apiVersion": "v1", "kind": "ConfigMap", "metadata": {"name": "ca-bundle"}, "data": {"ca.crt": "x"}}],
@@ -54,7 +54,7 @@ def scheduling() -> None:
         main = container(doc, "molesignal")
         check(main["securityContext"] == {"allowPrivilegeEscalation": False}, f"{role}: container security context")
         check(
-            env_of(main)["MS_COMPACTOR_RETENTION_DAYS"]["value"] == "90" and main["envFrom"] == values["extraEnvFrom"],
+            env_of(main)["MS_COMPACTOR_INTERVAL_SECS"]["value"] == "600" and main["envFrom"] == values["extraEnvFrom"],
             f"{role}: extra env and envFrom",
         )
         check(
@@ -241,7 +241,7 @@ def registry_and_pull_secrets() -> None:
         (f"{FULL}-router", "wait-for-dependencies"): "mirror.example.cn/molesignal/molesignal:latest",
         (f"{FULL}-postgresql", "postgresql"): "mirror.example.cn/postgres:17",
         (f"{FULL}-rustfs", "rustfs"): "mirror.example.cn/rustfs/rustfs:latest",
-        (f"{FULL}-rustfs", "bucket-init"): "mirror.example.cn/aws-cli/aws-cli:latest",
+        (f"{FULL}-rustfs", "bucket-init"): "mirror.example.cn/amazon/aws-cli:latest",
         (f"{FULL}-web", "web"): "mirror.example.cn/internal/web:1",
     }
     check(all(images[k] == v for k, v in wanted.items()), "the registry host is replaced and the path kept", str({k: images[k] for k in wanted if images[k] != wanted[k]}))

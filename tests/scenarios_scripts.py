@@ -64,8 +64,8 @@ def ci_install() -> None:
         "each install uses its own values file",
     )
     check(
-        [c for c in calls if c.startswith("helm test ")] == [f"helm test ci --namespace {ns} --logs --timeout 5m" for ns in namespaces],
-        "runs helm test after each install and shows its logs",
+        [c for c in calls if c.startswith("helm test ")] == [f"helm test ci --namespace {ns} --timeout 5m" for ns in namespaces],
+        "runs helm test after each install, without --logs, which fails once the passed test pod is gone",
     )
     check(not any(" describe " in c or " logs " in c for c in calls if c.startswith("kubectl")), "dumps nothing when all is well")
     check(

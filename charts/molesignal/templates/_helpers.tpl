@@ -148,7 +148,9 @@ it looks like a host) and keeps the rest of the path.
 Roles ------------------------------------------------------------------------
 Static facts about each role: workload kind, whether it keeps a write-ahead log,
 whether it advertises a gRPC address to its peers, the ports it listens on and its
-readiness probe. They mirror deploy/k8s in the application repository.
+readiness probe. They mirror deploy/k8s in the application repository. `standalone`
+and `router` run the full HTTP server, which answers /api/v1/readyz with 401 without
+a login; only /api/v1/healthz is open there.
 */}}
 {{- define "molesignal.roleSpecs" -}}
 standalone:
@@ -157,7 +159,7 @@ standalone:
   advertise: false
   service: true
   ports: [http, grpc, otlp-grpc, probe-register, probe-control]
-  probe: {path: /api/v1/readyz, initialDelaySeconds: 10, periodSeconds: 5, failureThreshold: 12}
+  probe: {path: /api/v1/healthz, initialDelaySeconds: 10, periodSeconds: 5, failureThreshold: 12}
 router:
   kind: Deployment
   wal: false

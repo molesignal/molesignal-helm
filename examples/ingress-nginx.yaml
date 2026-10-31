@@ -2,7 +2,9 @@
 #
 # Live tail streams rows as they arrive: the controller must not buffer responses,
 # and long queries need generous timeouts. OTLP over gRPC needs the backend
-# protocol set to GRPC and, with nginx, TLS on the listener.
+# protocol set to GRPC and, with nginx, TLS on the listener. After the install, list
+# the controller's pods as trusted proxies so that the application sees real client
+# addresses: "Exposing it" in the chart README.
 
 externalUrl: https://observability.example.com
 

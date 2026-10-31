@@ -5,7 +5,7 @@
 #   ghcr.io/molesignal/molesignal            -> registry.example.com/molesignal/molesignal
 #   postgres                                 -> registry.example.com/postgres
 #   rustfs/rustfs                            -> registry.example.com/rustfs/rustfs
-#   public.ecr.aws/aws-cli/aws-cli           -> registry.example.com/aws-cli/aws-cli
+#   amazon/aws-cli                           -> registry.example.com/amazon/aws-cli
 # or set each `*.image.repository` yourself when your mirror lays paths out differently.
 
 global:

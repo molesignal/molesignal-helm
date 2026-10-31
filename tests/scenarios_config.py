@@ -23,10 +23,10 @@ def same(a, b) -> bool:
 def toml_fidelity() -> None:
     section("config · TOML written from values keeps its types")
     user = {
-        "auth": {"token_ttl_secs": 86400},
-        "cache": {"object": {"enabled": True, "max_bytes": 10737418240, "root": "/var/cache/objects"}},
+        "auth": {"session_ttl_secs": 86400},
+        "cache": {"object": {"enabled": True, "max_size": 10737418240, "root": "/var/cache/objects"}},
         "querier": {"max_scan_rows": 100000000, "ratio": 0.5},
-        "compactor": {"retention_days": 90},
+        "compactor": {"interval_secs": 600},
         "notify": {"smtp": {"host": "smtp.example.com", "port": 587, "starttls": False}},
         "node": {"roles_hint": ["a", "b"], "label": 'say "hi" <b>&</b> 你好\\n'},
         "telemetry": {"trace": {"slow_thresholds": {"object_store_ms": 250}}},
@@ -46,11 +46,11 @@ def toml_fidelity() -> None:
         "whole numbers are written as integers, never 86400.0 or 1e+08",
         text,
     )
-    check("max_bytes = 10737418240\n" in text, "a 10 GiB value is written in full")
+    check("max_size = 10737418240\n" in text, "a number above 32 bits is written in full")
 
-    ints = render(sets=["config.compactor.retention_days=7", "config.querier.max_scan_rows=200000000"])
+    ints = render(sets=["config.compactor.interval_secs=7", "config.querier.max_scan_rows=200000000"])
     check(
-        same(ints.config()["compactor"], {"retention_days": 7}) and ints.config()["querier"]["max_scan_rows"] == 200000000,
+        same(ints.config()["compactor"], {"interval_secs": 7}) and ints.config()["querier"]["max_scan_rows"] == 200000000,
         "numbers given with --set come out as integers too",
     )
 

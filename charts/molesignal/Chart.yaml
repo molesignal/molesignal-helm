@@ -10,7 +10,7 @@ type: application
 # application. Bump `version` for every chart change. `appVersion` is the default
 # image tag, and that is `latest`: the chart follows the application's newest image
 # rather than a pinned release. See docs/versioning.md.
-version: 0.1.0
+version: 0.2.0
 appVersion: "latest"
 
 kubeVersion: ">=1.27.0-0"
@@ -51,14 +51,20 @@ annotations:
     - name: rustfs
       image: rustfs/rustfs:latest
     - name: aws-cli
-      image: public.ecr.aws/aws-cli/aws-cli:latest
+      image: amazon/aws-cli:latest
   artifacthub.io/links: |
     - name: Documentation
       url: https://github.com/molesignal/molesignal-helm/tree/main/docs
     - name: Application
       url: https://github.com/molesignal/molesignal
   artifacthub.io/changes: |
+    - kind: fixed
+      description: Standalone pods, the default, never became ready because the readiness probe asked a path that needs a login
+    - kind: fixed
+      description: The bucket sidecar pulls the AWS CLI from Docker Hub, because the anonymous limit of ECR Public could hold up an install
+    - kind: changed
+      description: releaseChannel defaults to stable, the channel of the default image
+    - kind: fixed
+      description: Examples and documentation no longer name settings the application has removed or renamed
     - kind: added
-      description: Initial release of the chart, with standalone and distributed modes
-    - kind: added
-      description: Optional bundled PostgreSQL and RustFS for evaluation
+      description: README and install notes explain client addresses behind an ingress

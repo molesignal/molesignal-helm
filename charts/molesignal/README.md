@@ -26,7 +26,7 @@ kubectl --namespace molesignal port-forward svc/molesignal 5080:5080
 or from the OCI registry:
 
 ```bash
-helm install molesignal oci://ghcr.io/molesignal/charts/molesignal --version 0.1.0 \
+helm install molesignal oci://ghcr.io/molesignal/charts/molesignal --version 0.2.0 \
   --namespace molesignal --create-namespace
 ```
 
@@ -48,21 +48,19 @@ Every image except PostgreSQL's follows `latest` and is pulled on every pod star
 | --- | --- |
 | `image` (the application) | `ghcr.io/molesignal/molesignal:latest` |
 | `rustfs.image` | `rustfs/rustfs:latest` |
-| `rustfs.bucketInit.image` | `public.ecr.aws/aws-cli/aws-cli:latest` |
+| `rustfs.bucketInit.image` | `amazon/aws-cli:latest` |
 | `postgresql.image` | `postgres:17` |
 
 `latest` moves, so two installs of the same chart can run different versions, and a pod that
 restarts can come back on a newer image than its siblings. For anything beyond trying the chart out,
 pin `image.tag` (or `image.digest`) and the RustFS tag, and go back to `pullPolicy: IfNotPresent`.
 
-**The chart follows the application's `main` branch**: the role names (`alert`, not `alert_manager`),
-the metadata database connection (`MS_META_DATABASE_DSN`), the cluster token and the report-rendering
-settings are those of `deploy/k8s` there. An image built before that does not start with this chart.
-As of 2026-10-11 that is every tag published for the application (`26.1.0.0`, `alpha`, built on
-2026-08-17): the alert role is still called `alert_manager` in them and the metadata store is
-configured differently. The application's release workflow also pushes `latest` only for
-stable-channel releases, so until there is one `ghcr.io/molesignal/molesignal:latest` cannot be pulled
-at all; install with an explicit `image.tag` meanwhile.
+**The chart needs application 26.2.0.0 or later**: the role names (`alert`, not `alert_manager`), the
+metadata database connection (`MS_META_DATABASE_DSN`), the cluster token and the report-rendering
+settings are those of `deploy/k8s` from that release on. Older images do not start with this chart:
+`26.1.0.0`, and the `alpha` tag, which still points at the same build. The application's release
+workflow moves `latest` only for stable-channel releases, which is why `releaseChannel` defaults to
+`stable`.
 
 ## Choosing a topology
 
@@ -156,6 +154,11 @@ ingress:
 - **`/metrics` has no authentication.** The application serves it outside its auth layer on
   port 5080, the same port as the UI and API. Do not route it to the internet: block it at the
   ingress (the nginx example shows how), or keep the ingress internal.
+- **Client addresses.** Behind an ingress the application sees the controller's address, not the
+  user's. In the `_sys` organization open **Settings → Client IP recognition**, choose the forwarded
+  chain and list the network of the controller's pods as trusted proxies. RUM geolocation, sign-in
+  limits and the audit of public links depend on it. It is stored in the database, so there is no
+  value for it here.
 - **Probe agents** connect to ports 5084 (register) and 5085 (control) of the alert role. Set
   `alert.service.type` (`standalone.service.type` in standalone mode) to `LoadBalancer` or
   `NodePort`, and tell the application which public addresses to print in the register command:
@@ -177,26 +180,26 @@ of the application's own `conf/config.toml`, which lists every setting with its 
 ```yaml
 config:
   compactor:
-    retention_days: 90
-  cache:
-    object:
-      max_bytes: 5368709120
+    interval_secs: 600
+  querier:
+    max_scan_rows: 200000000
 ```
 
 Everything you do not set uses the application's built-in default. Any setting can also be given
 as an environment variable, `MS_<SECTION>_<KEY>`, through `extraEnv`; environment variables win
-over the file. Unknown keys in `[object_store]` stop the application from starting, so check
-names against the reference file.
+over the file. Settings get renamed between application versions, so check names against the
+`conf/config.toml` of the image you run: an unknown key stops the application from starting in some
+tables (`[object_store]`, `[telemetry]`, `[meta_database]`) and is ignored without a word in the
+others.
 
 The cache of object-store blocks (`cache.object`, 10 GiB by default) lives in the container's
-writable layer. On small nodes lower `cache.object.max_bytes`, or set an `ephemeral-storage`
-limit that fits.
+writable layer. On small nodes lower `cache.object.max_size` (in MiB; `max_bytes`, in bytes, up to
+application 26.2.0.0), or set an `ephemeral-storage` limit that fits.
 
 ## Sizing and scheduling
 
 `resources` are empty by default so that the chart installs on a small cluster; set them for
-anything real. Intake buffers up to 1 GiB per replica (`intake.max_buffer_memory_mb`) before it
-flushes, the alert role renders reports with a headless Chromium, and queriers read Parquet
+anything real. Intake buffers up to 1 GiB per replica by default before it flushes, the alert role renders reports with a headless Chromium, and queriers read Parquet
 files, so give those three memory first. HPA targets are percentages of the *requests*.
 
 The application image runs as root and the chart does not change that, so a namespace that enforces
@@ -269,12 +272,12 @@ The table is generated from `values.yaml` (`python3 scripts/gen-values-doc.py`).
 | `image.digest` | string | `""` | Image digest (`sha256:...`). When set it is used together with the tag. |
 | `image.pullPolicy` | string | `"Always"` | Image pull policy. `Always`, because the default tag moves; use `IfNotPresent` once you pin one. |
 | `imagePullSecrets` | list | `[]` | Pull secrets, as a list of `{name: ...}`. |
-| `releaseChannel` | string | `"alpha"` | Runtime delivery channel, exposed to the application as `RELEASE_CHANNEL`. One of `alpha`, `beta`, `rc`, `stable`. It is metadata only: promoting a build through channels does not change the image, just this value. |
+| `releaseChannel` | string | `"stable"` | Runtime delivery channel, exposed to the application as `RELEASE_CHANNEL`. One of `alpha`, `beta`, `rc`, `stable`. It is metadata only: promoting a build through channels does not change the image, just this value. `stable` is the channel of the default image: `latest` only moves with stable-channel releases. |
 | `logging.level` | string | `"info,tantivy=warn"` | Log filter, in `tracing` env-filter syntax. |
 | `logging.format` | string | `"json"` | Log format: `json` or `text`. |
 | `externalUrl` | string | `""` | Public URL of the UI, for example `https://molesignal.example.com`. Shown in the data-source setup pages and used as the CNAME target for status pages. Empty derives it from the first `ingress.hosts` entry when the ingress is enabled. |
-| `config` | object | `{}` | Extra application settings, merged over the chart's own and written to `config.toml`. Mirrors the TOML layout of the application's `conf/config.toml`: a key `compactor.retention_days` becomes `[compactor] retention_days = ...`. Values set here win over the keys the chart derives from its other values (`wal.dir`, `object_store.*`, `telemetry.*`, `http.external_url`, `scheduled_reports.renderer.base_url`). Unknown keys can stop the application from starting; check the reference file shipped with the application. |
-| `extraEnv` | list | `[]` | Extra environment variables for every MoleSignal container. Any setting can also be given as `MS_<SECTION>_<KEY>` (for example `MS_COMPACTOR_RETENTION_DAYS`); environment variables win over `config.toml`. |
+| `config` | object | `{}` | Extra application settings, merged over the chart's own and written to `config.toml`. Mirrors the TOML layout of the application's `conf/config.toml`: a key `compactor.interval_secs` becomes `[compactor] interval_secs = ...`. Values set here win over the keys the chart derives from its other values (`wal.dir`, `object_store.*`, `telemetry.*`, `http.external_url`, `scheduled_reports.renderer.base_url`). Check names against the `conf/config.toml` of the image you run: some tables refuse an unknown key, which stops the application from starting, and the others ignore it without a word. |
+| `extraEnv` | list | `[]` | Extra environment variables for every MoleSignal container. Any setting can also be given as `MS_<SECTION>_<KEY>` (for example `MS_COMPACTOR_INTERVAL_SECS`); environment variables win over `config.toml`. |
 | `extraEnvFrom` | list | `[]` | Extra `envFrom` sources for every MoleSignal container. |
 | `extraVolumes` | list | `[]` | Extra volumes for every MoleSignal pod. |
 | `extraVolumeMounts` | list | `[]` | Extra volume mounts for every MoleSignal container. |
@@ -341,7 +344,7 @@ The table is generated from `values.yaml` (`python3 scripts/gen-values-doc.py`).
 | `rustfs.persistence.size` | string | `"20Gi"` | Volume size. |
 | `rustfs.persistence.storageClass` | string | `""` | Storage class. Empty uses the cluster default. |
 | `rustfs.persistence.accessModes` | list | `["ReadWriteOnce"]` | Access modes. |
-| `rustfs.bucketInit.image` | object | `{"repository":"public.ecr.aws/aws-cli/aws-cli","tag":"latest","digest":"","pu...` | Image of the sidecar that creates the bucket and keeps it private. The pod only becomes ready once the bucket exists. |
+| `rustfs.bucketInit.image` | object | `{"repository":"amazon/aws-cli","tag":"latest","digest":"","pullPolicy":"Always"}` | Image of the sidecar that creates the bucket and keeps it private. The pod only becomes ready once the bucket exists. The same image is published as `public.ecr.aws/aws-cli/aws-cli`, but ECR Public answers anonymous pulls from shared addresses with `429 Too Many Requests`, which holds up the whole install. |
 | `rustfs.bucketInit.resources` | object | `{}` | Resource requests and limits of the sidecar. |
 | `rustfs.resources` | object | `{}` | Resource requests and limits. |
 | `rustfs.podSecurityContext` | object | `{"fsGroup":10001,"fsGroupChangePolicy":"OnRootMismatch"}` | Pod security context. The image runs as uid/gid 10001. |
@@ -386,7 +389,7 @@ The table is generated from `values.yaml` (`python3 scripts/gen-values-doc.py`).
 | `router.podDisruptionBudget.minAvailable` | null | `null` | Minimum available pods. Set one of `minAvailable` / `maxUnavailable`. |
 | `router.podDisruptionBudget.maxUnavailable` | int | `1` | Maximum unavailable pods. |
 | `intake.replicaCount` | int | `2` | Replicas. |
-| `intake.resources` | object | `{}` | Resource requests and limits. Every replica buffers up to `intake.max_buffer_memory_mb` (1 GiB by default) before it flushes. |
+| `intake.resources` | object | `{}` | Resource requests and limits. Every replica buffers up to 1 GiB by default (see `[intake]` in the application's `conf/config.toml`) before it flushes. |
 | `intake.terminationGracePeriodSeconds` | int | `60` | Seconds the kubelet waits after SIGTERM before it kills the process (see `standalone`). |
 | `intake.podManagementPolicy` | string | `"OrderedReady"` | `OrderedReady` waits for each replica's WAL replay before it starts the next; `Parallel` starts them together. |
 | `intake.persistence.enabled` | bool | `true` | Keep each replica's write-ahead log on its own PersistentVolumeClaim. When false an `emptyDir` is used and un-flushed data is lost whenever a pod restarts. |
