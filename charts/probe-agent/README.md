@@ -129,9 +129,10 @@ to the profile. `browser.tmp` configures it: `{medium: Memory}` keeps it in memo
 towards the memory limit, and going over `sizeLimit` evicts the pod.
 
 **Sizing.** The defaults (512 MiB requested, a limit of 2 GiB, no CPU limit) are for one browser check
-at a time. The Agent caps the JavaScript heap of a page at 512 MiB, and a page uses more than that
-in total. Add at least 1 GiB of limit and half a CPU per `browser.maxConcurrent`, and watch the real
-pages you check. Going over the limit kills a Chromium process first, and that check fails.
+at a time. On kind, a browser check of MoleSignal's own sign-in page took the container to about
+280 MiB. The Agent caps the JavaScript heap of a page at 512 MiB, and a heavy page uses more than that in
+total. Add at least 1 GiB of limit and half a CPU per `browser.maxConcurrent`, and watch the real pages
+you check. Going over the limit kills a Chromium process first, and that check fails.
 
 ## Other things to know
 
