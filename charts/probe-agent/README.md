@@ -148,8 +148,9 @@ you check. Going over the limit kills a Chromium process first, and that check f
   `image.digest`) and go back to `pullPolicy: IfNotPresent` for anything beyond trying the chart out.
 - **Versions.** The chart needs an application newer than 26.2.0.0, on the server and in the Agent
   image. In 26.2.0.0 the server cannot register an Agent, and an Agent never gets past `registered`.
-  An Agent older than the server's features only gets the checks it can run; see the synthetics
-  documentation.
+  No such version had been published when this version of the chart was released. Until one is, `latest`
+  gives Agents that stay in `Init`. An Agent older than the server's features only gets the checks it
+  can run; see the synthetics documentation.
 - **Security context.** The defaults pass the `restricted` Pod Security Standard, sysctl included.
 
 ## Troubleshooting

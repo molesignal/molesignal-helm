@@ -16,6 +16,11 @@ First release. Deploys `ghcr.io/molesignal/probe-agent:latest`. Needs an applica
 26.2.0.0, on the server and in the Agent image: in that release the server cannot register an Agent,
 and an Agent never gets past `registered`.
 
+> **Compatibility.** No such version had been published when this chart was released, so `latest` gives
+> Agents that stay in `Init` until one is. The install on kind fails at registration on the published
+> images. It passed only on images with those two bugs patched, which is what the list below was
+> checked against.
+
 ### Added
 
 - Probe Agents as a StatefulSet. Each replica registers on its own from an init container, and keeps
