@@ -251,6 +251,7 @@ SCRIPT_MUTATIONS = [
         status=1
 ''', '''        echo "::error title=probe-agent::${values} failed"
 '''),
+    ("secret-kept-for-the-restart", '  kubectl --namespace "${agent_ns}" delete secret "${secret}" || return 1\n', ""),
     ("no-evidence", '  [[ "${status}" == 0 ]] || dump "${agent_ns}"\n', ""),
     ("server-without-probe-values", ' --values "${probe_agent}/ci/molesignal-server.yaml"', ""),
     ("agents-not-pinned-to-the-tag",

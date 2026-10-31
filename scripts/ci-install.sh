@@ -185,11 +185,12 @@ run_checks() {
       steps: [{id: "open", name: "open", action: {action: "navigate", url: {source: "literal", value: $url}, wait_until: "load"}}]}}')"
 }
 
-# same_agent_after_restart FULLNAME LOCATION AGENTS: a pod that is deleted comes back with its
-# identity. Its init container says it found one, the location has no new Agent, and the Agent's
-# heartbeat, which stopped with the old pod, moves again.
+# same_agent_after_restart FULLNAME LOCATION AGENTS SECRET: a pod that is deleted comes back with its
+# identity, even with its token's Secret gone. Its init container says it found one, the location has
+# no new Agent, and the Agent's heartbeat, which stopped with the old pod, moves again.
 same_agent_after_restart() {
-  local full="$1" location="$2" before="$3" pod="$1-0" stopped="" agents="" attempt
+  local full="$1" location="$2" before="$3" secret="$4" pod="$1-0" stopped="" agents="" attempt
+  kubectl --namespace "${agent_ns}" delete secret "${secret}" || return 1
   kubectl --namespace "${agent_ns}" delete pod "${pod}" --wait=true --timeout=2m || return 1
   agents="$(api GET "/synthetics/locations/${location}/agents")" || return 1
   stopped="$(jq -r --arg pod "${pod}" '.[] | select(.hostname == $pod) | .last_heartbeat_at' <<<"${agents}")"
@@ -255,7 +256,8 @@ probe_agent_scenario() {
   [[ "$(jq '[.[].id] | unique | length' <<<"${agents}")" == "${replicas}" ]] || { echo "Agents share an identity: ${agents}" >&2; return 1; }
 
   run_checks "${location}" || return 1
-  same_agent_after_restart "${full}" "${location}" "${agents}" || return 1
+  echo "peak memory of ${full}-0 so far, in bytes: $(kubectl --namespace "${agent_ns}" exec "${full}-0" --container probe-agent -- cat /sys/fs/cgroup/memory.peak)"
+  same_agent_after_restart "${full}" "${location}" "${agents}" "ci-${kind}" || return 1
 }
 
 install_probe_agent() {

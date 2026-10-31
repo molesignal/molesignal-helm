@@ -223,6 +223,8 @@ def ci_install_probe_agent() -> None:
         check(calls.index(install) < polled, f"{kind}: asks the server for its Agents after the install")
         deleted = next(i for i, c in enumerate(calls) if f"delete pod {kind}-probe-agent-0" in c)
         check(polled < deleted, f"{kind}: deletes a pod once the Agents are online")
+        secret_gone = next(i for i, c in enumerate(calls) if f"delete secret ci-{kind}" in c)
+        check(polled < secret_gone < deleted, f"{kind}: and its token's Secret before that, which an Agent with an identity does not need")
         check(any(f"logs {kind}-probe-agent-0 --container register" in c for c in calls[deleted:]), f"{kind}: and reads what its init container found")
     one_time = next(c for c in calls if "create secret generic ci-one-time-token" in c)
     agent = next(c for c in calls if "create secret generic ci-agent-token" in c)
