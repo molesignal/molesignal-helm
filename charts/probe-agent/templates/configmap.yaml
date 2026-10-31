@@ -1,0 +1,20 @@
+{{- /*
+What `browser.sandbox: false` comes down to. The Agent has no setting for it, and the launcher of
+the image, /usr/bin/chromium, ignores CHROMIUM_FLAGS from the environment but sources every file
+in /etc/chromium.d, so this file is mounted there.
+*/ -}}
+{{- if not .Values.browser.sandbox }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "probe-agent.fullname" . }}-chromium-flags
+  labels:
+    {{- include "probe-agent.labels" . | nindent 4 }}
+  {{- with include "probe-agent.annotations" (dict "ctx" .) }}
+  annotations:
+    {{- . | nindent 4 }}
+  {{- end }}
+data:
+  no-sandbox: |
+    export CHROMIUM_FLAGS="$CHROMIUM_FLAGS --no-sandbox"
+{{- end }}

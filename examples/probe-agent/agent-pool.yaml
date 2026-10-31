@@ -1,0 +1,45 @@
+# Three Agents for one Agent Pool location, from a registry you mirror to, with the token in a
+# Secret you manage. It can go in a sealed or external secret, and you can delete it once the
+# Agents are online, until you need to add one:
+#
+#   kubectl --namespace probes create secret generic probe-agent-registration \
+#     --from-literal=token=ms_probe_...
+#
+# The endpoint and the CA come from the register command that MoleSignal shows under
+# Synthetics > Agents. Neither is a secret. Copy the real ones over these.
+
+replicaCount: 3
+
+registration:
+  endpoint: https://probes.example.com:5084
+  caCertificateBase64: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCnBsYWNlaG9sZGVyCi0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0K
+  existingSecret: probe-agent-registration
+
+global:
+  imageRegistry: registry.example.com
+
+image:
+  tag: "26.2.0.0"
+  pullPolicy: IfNotPresent
+
+# Four checks at a time of which two in a browser. Each Chromium needs its own memory.
+maxConcurrent: 4
+browser:
+  maxConcurrent: 2
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    memory: 4Gi
+
+# Spread them, so that a location survives losing a node.
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: ScheduleAnyway
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/name: probe-agent
+        app.kubernetes.io/component: agent

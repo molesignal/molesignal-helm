@@ -1,0 +1,18 @@
+{{- /*
+The Service a StatefulSet has to name. It has no ports: an Agent only opens outbound
+connections and nothing connects to it.
+*/ -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "probe-agent.fullname" . }}
+  labels:
+    {{- include "probe-agent.labels" . | nindent 4 }}
+  {{- with include "probe-agent.annotations" (dict "ctx" .) }}
+  annotations:
+    {{- . | nindent 4 }}
+  {{- end }}
+spec:
+  clusterIP: None
+  selector:
+    {{- include "probe-agent.selectorLabels" . | nindent 4 }}
