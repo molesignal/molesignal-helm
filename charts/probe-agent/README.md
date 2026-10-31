@@ -145,8 +145,10 @@ pages you check. Going over the limit kills a Chromium process first, and that c
   the `molesignal` chart. `global.imageRegistry` applies:
   `ghcr.io/molesignal/probe-agent` becomes `<registry>/molesignal/probe-agent`. Pin `image.tag` (or
   `image.digest`) and go back to `pullPolicy: IfNotPresent` for anything beyond trying the chart out.
-- **Versions.** The chart needs application 26.2.0.0 or later on the server. An Agent older than the
-  server's features only gets the checks it can run; see the synthetics documentation.
+- **Versions.** The chart needs an application newer than 26.2.0.0, on the server and in the Agent
+  image. In 26.2.0.0 the server cannot register an Agent, and an Agent never gets past `registered`.
+  An Agent older than the server's features only gets the checks it can run; see the synthetics
+  documentation.
 - **Security context.** The defaults pass the `restricted` Pod Security Standard, sysctl included.
 
 ## Troubleshooting
@@ -155,9 +157,11 @@ pages you check. Going over the limit kills a Chromium process first, and that c
 | --- | --- |
 | A pod stays in `Init` | `kubectl logs <pod> -c register`. See below. |
 | `connect to Probe endpoint` | The endpoint cannot be reached, or its certificate does not name its host: check `[probe].server_names` on the server and `registration.endpoint`. |
+| `internal Probe control error` | The server failed, and its own log says why (`Probe gRPC internal error`). On application 26.2.0.0 that is `syntax error at or near "grant"`: upgrade the server. |
 | `invalid, expired, disabled, or already-used Probe credential` | The token: a one-time token that has been used or has expired, or one being shared by replicas. Put a new one in the Secret; the pod picks it up at its next retry. |
 | `no identity ... and no token to register with` | The Secret is gone, or does not have the key `registration.existingSecretKey`. |
 | Registered, but never online | The control endpoint comes from the server's `[probe].control_endpoint`, not from these values. `kubectl logs <pod>` says what the connection does. To change it, fix it on the server, delete the PVC and register again: the Agent keeps the address it got. |
+| `open Probe control stream` about every 15 seconds, and never online | An Agent image of application 26.2.0.0: it waits for the server's answer while the server waits for its first message. Upgrade the Agent. |
 | Browser checks fail with `launch Chrome` | You set `browser.sandbox: true` on nodes or under a profile that do not allow it. See [Browser checks](#browser-checks). |
 | `helm test` fails | Its log has the error the Agent would get. It needs nothing but the endpoint and the CA. |
 | `helm install` fails with `probe-agent:` | A guard refused the values; the message says what to change. |

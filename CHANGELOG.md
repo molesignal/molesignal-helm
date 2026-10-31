@@ -12,8 +12,9 @@ breaking changes; they are collected under **Upgrade notes**.
 
 ## [probe-agent 0.1.0] - 2026-10-31
 
-First release. Deploys `ghcr.io/molesignal/probe-agent:latest`, which is the application's 26.2.0.0
-today, and needs a server of that version or later.
+First release. Deploys `ghcr.io/molesignal/probe-agent:latest`. Needs an application newer than
+26.2.0.0, on the server and in the Agent image: in that release the server cannot register an Agent,
+and an Agent never gets past `registered`.
 
 ### Added
 

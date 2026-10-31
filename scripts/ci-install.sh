@@ -15,7 +15,9 @@
 #              back as the same Agent.
 #
 # IMAGE_TAG        tag of the application and Agent images to install (default: latest)
-# INSTALL_TIMEOUT  how long `helm install --wait` may take (default: 10m)
+# INSTALL_TIMEOUT  how long `helm install --wait` of the server may take (default: 10m)
+# AGENT_TIMEOUT    the same for the Agents, which start one small pod each and spend the wait
+#                  in a crash loop if they cannot register (default: 5m)
 #
 # Never run this against a cluster you care about: it creates and deletes namespaces.
 set -uo pipefail
@@ -24,6 +26,7 @@ molesignal="charts/molesignal"
 probe_agent="charts/probe-agent"
 tag="${IMAGE_TAG:-latest}"
 timeout="${INSTALL_TIMEOUT:-10m}"
+agent_timeout="${AGENT_TIMEOUT:-5m}"
 
 # The server of the probe-agent install, as named in charts/probe-agent/ci.
 agent_ns="ci-probe-agent"
@@ -174,12 +177,13 @@ run_check() {
   return 1
 }
 
+# The names carry the kind of token because a server refuses a second check with the same name.
 run_checks() {
-  local location="$1" url="http://${server}.${agent_ns}.svc.cluster.local:5080"
-  run_check http "${location}" "$(jq -n --arg url "${url}/api/v1/healthz" \
+  local kind="$1" location="$2" url="http://${server}.${agent_ns}.svc.cluster.local:5080"
+  run_check "${kind}-http" "${location}" "$(jq -n --arg url "${url}/api/v1/healthz" \
     '{kind: "http", configuration: {follow_redirects: true, max_redirects: 3, verify_tls: true,
       steps: [{id: "health", name: "health", method: "GET", url: {source: "literal", value: $url}, body: null}]}}')" || return 1
-  run_check browser "${location}" "$(jq -n --arg url "${url}/" \
+  run_check "${kind}-browser" "${location}" "$(jq -n --arg url "${url}/" \
     '{kind: "browser", configuration: {viewport: {width: 1280, height: 720}, user_agent: null,
       capture_screenshot_on_failure: false, capture_har_on_failure: false,
       steps: [{id: "open", name: "open", action: {action: "navigate", url: {source: "literal", value: $url}, wait_until: "load"}}]}}')"
@@ -217,7 +221,7 @@ same_agent_after_restart() {
 
 # One values file in charts/probe-agent/ci. Its name says which kind of token it registers with.
 probe_agent_scenario() {
-  local values="$1" kind release full answer location instructions token ca replicas agents
+  local values="$1" kind release full answer location instructions token ca replicas agents replica
   kind="$(basename "${values}" -values.yaml)"
   release="${kind}"
   full="${release}-probe-agent"
@@ -247,7 +251,7 @@ probe_agent_scenario() {
   kubectl --namespace "${agent_ns}" create secret generic "ci-${kind}" --from-literal="token=${token}" || return 1
 
   helm install "${release}" "${probe_agent}" --namespace "${agent_ns}" --values "${values}" \
-    --set "image.tag=${tag}" --set-string "registration.caCertificateBase64=${ca}" --wait --timeout "${timeout}" || return 1
+    --set "image.tag=${tag}" --set-string "registration.caCertificateBase64=${ca}" --wait --timeout "${agent_timeout}" || return 1
   helm test "${release}" --namespace "${agent_ns}" --timeout 5m || return 1
 
   replicas="$(kubectl --namespace "${agent_ns}" get "statefulset/${full}" --output 'jsonpath={.spec.replicas}')"
@@ -255,8 +259,11 @@ probe_agent_scenario() {
   echo "${replicas} online, each with its own identity: $(jq -c '[.[] | {hostname, status, capabilities}]' <<<"${agents}")"
   [[ "$(jq '[.[].id] | unique | length' <<<"${agents}")" == "${replicas}" ]] || { echo "Agents share an identity: ${agents}" >&2; return 1; }
 
-  run_checks "${location}" || return 1
-  echo "peak memory of ${full}-0 so far, in bytes: $(kubectl --namespace "${agent_ns}" exec "${full}-0" --container probe-agent -- cat /sys/fs/cgroup/memory.peak)"
+  run_checks "${kind}" "${location}" || return 1
+  # For sizing, not a check: the browser check ran on one of the replicas.
+  for ((replica = 0; replica < replicas; replica++)); do
+    echo "peak memory of ${full}-${replica} so far, in bytes: $(kubectl --namespace "${agent_ns}" exec "${full}-${replica}" --container probe-agent -- cat /sys/fs/cgroup/memory.peak)"
+  done
   same_agent_after_restart "${full}" "${location}" "${agents}" "ci-${kind}" || return 1
 }
 

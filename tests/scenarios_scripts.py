@@ -100,11 +100,14 @@ if path.endswith("/agents"):
     answer(agents)
 if path == "/synthetics/monitors":
     name = json.loads(data)["name"]
+    if sum(f'"name":"{name}"' in c for c in calls if c.startswith("api POST /synthetics/monitors ")) > 1:
+        print(json.dumps({"error": "conflict", "message": "uq_synthetic_monitors_org_name_active"}))
+        sys.exit(22)
     answer({"monitor": {"id": f"monitor-{name}"}, "revision": {"id": "revision-1"}})
 if path.endswith("/test"):
     answer([])
 if "/results" in path:
-    bad = fail == "browser-check" and "monitor-browser" in path
+    bad = fail == "browser-check" and path.split("?")[0].split("/")[3].endswith("-browser")
     answer([{"outcome": "failing" if bad else "healthy", "agent_id": "agent-1"}])
 refuse("no such route: " + path)
 """
@@ -214,6 +217,7 @@ def ci_install_probe_agent() -> None:
             f"--values charts/probe-agent/ci/{name}" in install and "--set image.tag=sha-abc" in install and "--wait" in install and "charts/probe-agent" in install.split()[3],
             f"{kind}: uses its own values file, the image tag from IMAGE_TAG, and waits",
         )
+        check("--timeout 5m" in install, f"{kind}: and not for as long as for the server, since an Agent that cannot register only crash-loops")
         check(f"--set-string registration.caCertificateBase64={ca}" in install, f"{kind}: with the CA the server generated")
         location = next(i for i, c in enumerate(calls) if c.startswith("api POST /synthetics/locations ") and kind in c)
         secret = next(i for i, c in enumerate(calls) if f"create secret generic ci-{kind}" in c)
@@ -221,6 +225,9 @@ def ci_install_probe_agent() -> None:
         check(f"helm test {kind} --namespace ci-probe-agent --timeout 5m" in calls, f"{kind}: runs helm test")
         polled = next(i for i, c in enumerate(calls) if c.startswith(f"api GET /synthetics/locations/location-{kind}/agents"))
         check(calls.index(install) < polled, f"{kind}: asks the server for its Agents after the install")
+        replicas = 2 if kind == "agent-token" else 1
+        peaks = [c for c in calls if c.startswith("kubectl") and f"exec {kind}-probe-agent-" in c and "memory.peak" in c]
+        check(len(peaks) == replicas, f"{kind}: prints the peak memory of each replica, since the browser check ran on one of them", str(peaks))
         deleted = next(i for i, c in enumerate(calls) if f"delete pod {kind}-probe-agent-0" in c)
         check(polled < deleted, f"{kind}: deletes a pod once the Agents are online")
         secret_gone = next(i for i, c in enumerate(calls) if f"delete secret ci-{kind}" in c)
@@ -235,6 +242,7 @@ def ci_install_probe_agent() -> None:
     monitors = [json.loads(c[len(prefix):].split(" Authorization")[0]) for c in calls if c.startswith(prefix)]
     check(sorted(m["spec"]["kind"] for m in monitors) == sorted(["http", "browser"] * len(kinds)), "runs an HTTP and a browser check per values file", str(monitors))
     check(all(m["location_ids"] and m["spec"]["configuration"]["steps"] for m in monitors), "each in the location of its Agents")
+    check(len({m["name"] for m in monitors}) == len(monitors), "each under a name of its own, since a server refuses a second check with the same name")
     check(
         all("ci-molesignal.ci-probe-agent.svc.cluster.local:5080" in json.dumps(m["spec"]) for m in monitors),
         "against the server, inside the cluster",

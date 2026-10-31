@@ -142,6 +142,11 @@ to mirror, so this chart is built from `bin/probe-agent` and `deploy/docker/Dock
 and that exercises what matters: the endpoint answers, its certificate chains to the pinned CA and
 names its host. The server rejects a token that short before it touches anything.
 
+The first install on kind is also what found that external Agents could not work at all in application
+26.2.0.0: the server's registration query has a syntax error, and the control stream deadlocks, with the
+Agent and the server each waiting for the other to speak first. Neither shows without a real server, a real
+PostgreSQL and a real Agent, which is why `scripts/ci-install.sh` goes all the way to a browser check.
+
 The chart has no probes. The Agent has no port to ask, and it retries the control stream for
 ever, so a pod that is `Running` says nothing about the connection and a restart would not help. What
 tells whether an Agent is connected is its status on the server, which is what CI checks.
