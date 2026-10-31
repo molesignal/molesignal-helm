@@ -1,0 +1,28 @@
+# Values of the molesignal chart for the server the Agents register with in
+# scripts/ci-install.sh. The name does not end in -values.yaml, so chart-testing does not
+# take it for values of this chart.
+config:
+  probe:
+    register_endpoint: https://ci-molesignal.ci-probe-agent.svc.cluster.local:5084
+    control_endpoint: https://ci-molesignal.ci-probe-agent.svc.cluster.local:5085
+    server_names:
+      - ci-molesignal.ci-probe-agent.svc.cluster.local
+# The chart creates no user. These come from the environment so that the password, which
+# the script generates, stays out of the ConfigMap.
+extraEnv:
+  - name: MS_AUTH_ROOT_EMAIL
+    value: ci@example.com
+  - name: MS_AUTH_ROOT_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: ci-root
+        key: password
+postgresql:
+  persistence:
+    size: 1Gi
+rustfs:
+  persistence:
+    size: 1Gi
+standalone:
+  persistence:
+    size: 1Gi

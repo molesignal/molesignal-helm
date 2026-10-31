@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping. This is a small repository: one chart, with tests that run in seconds
+Thanks for helping. This is a small repository: two charts, with tests that run in seconds
 and need no cluster.
 
 ## Setup
@@ -13,14 +13,17 @@ make check
 ```
 
 runs everything CI runs without a cluster: `helm lint --strict` for the defaults and every file in
-`charts/molesignal/ci` and `examples`, the check that the values table in the chart README is
+`ci` of each chart and `examples` (the defaults of `probe-agent` cannot pass, because an Agent has to
+be told which server to register with), the check that the values table in each chart README is
 current, the render tests and the mutation tests. CI adds a kubeconform pass and an install on
 kind.
 
-The install job in CI needs an application image it can pull: `ghcr.io/molesignal/molesignal:latest`
-unless the repository variable `MOLESIGNAL_IMAGE_TAG` says otherwise (see [publishing](docs/publishing.md)).
-`scripts/ci-install.sh` is what it runs on kind; its control flow is tested with stand-ins for `helm`
-and `kubectl`.
+The install job in CI needs images it can pull: `ghcr.io/molesignal/molesignal` and
+`ghcr.io/molesignal/probe-agent` at `latest`, unless the repository variable `MOLESIGNAL_IMAGE_TAG`
+says otherwise (see [publishing](docs/publishing.md)). `scripts/ci-install.sh` is what it runs on kind.
+For `probe-agent` it installs a server first, because an Agent has nothing to do without one, and
+checks through the server's API that the Agents come online, run real checks and survive losing a
+pod. Its control flow is tested with stand-ins for `helm`, `kubectl` and that API.
 
 The scripts point `KUBECONFIG` at `/dev/null`. Keep it that way: nothing here needs a cluster, and
 a test must never be able to touch yours.
@@ -32,13 +35,13 @@ a test must never be able to touch yours.
    fails on a value without one.
 2. **Constrain it** in `values.schema.json` when the type or the allowed values are known. The
    top level is strict, so a typo in a key is an error rather than silence.
-3. **Test it**: a scenario in `tests/scenarios_*.py` that renders with the value and checks the
-   result. Look at what is already there; the harness checks that every selector, port, secret
+3. **Test it**: a scenario in `tests/scenarios_*.py` (`scenarios_probe_agent.py` for that chart) that
+   renders with the value and checks the result. Look at what is already there; the harness checks that every selector, port, secret
    key and volume the manifests mention exists, on every render you pass to `integrity()`.
 4. **Check the tests can fail.** If you changed logic rather than adding a value, add a mutation
    to `tests/mutate.py` that breaks it, and see that `make mutate` reports it as caught.
-5. **Bump the chart version** in `Chart.yaml` and add a line to [`CHANGELOG.md`](CHANGELOG.md).
-   `ct lint` fails the pull request otherwise, and a published version is never edited
+5. **Bump the version** in the `Chart.yaml` of the chart you changed, and only that one, and add a
+   line to [`CHANGELOG.md`](CHANGELOG.md). A published version is never edited
    ([versioning](docs/versioning.md)).
 
 ### Things that are easy to get wrong
@@ -62,5 +65,5 @@ what changed and why in the body, and what you checked.
 
 ## Releasing
 
-Merge a pull request that bumps the chart version. The release workflow does the rest; the
+Merge a pull request that bumps a chart's version. The release workflow does the rest; the
 one-time repository setup is in [publishing](docs/publishing.md).

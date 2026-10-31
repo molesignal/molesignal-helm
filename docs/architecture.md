@@ -1,4 +1,7 @@
-# How the chart is put together
+# How the charts are put together
+
+The first part is about `molesignal`, the chart of the server. [The probe-agent chart](#the-probe-agent-chart)
+is at the end.
 
 ## Relation to the application's own manifests
 
@@ -109,3 +112,41 @@ Relative to `deploy/k8s`:
   with `AmazonS3Builder::new()`, so the web-identity and pod-identity variables of the `AWS_*`
   environment are never read; without keys the client falls back to the instance metadata
   service, that is, an instance profile on the node. Run with keys, or with an instance profile.
+
+## The probe-agent chart
+
+An Agent is a client: it opens a TLS connection to port 5084 of the server to register, and an mTLS
+control stream to port 5085 from then on, and nothing connects to it. There are no upstream manifests
+to mirror, so this chart is built from `bin/probe-agent` and `deploy/docker/Dockerfile.probe-agent.release`.
+
+| What | Where | Why |
+| --- | --- | --- |
+| Identity | PVC `state`, one per replica, in `/var/lib/molesignal-probe/state` | A key the Agent generates and a certificate the server signs. A new pod with the volume is the same Agent; one without it is a new one, and a one-time token cannot make that a second time. |
+| Registration | init container `register` | `probe-agent register` refuses to replace an identity, so the init container looks first, and does nothing when there is one. The token reaches it as an environment variable, because the command only takes it as a flag. |
+| Token | Secret, referred to with `optional: true` | No default, never in a ConfigMap. Only read until there is an identity, so it restarts nothing and can be deleted. There is no `resource-policy: keep`: unlike the server's cipher key, nothing depends on it later. |
+| Subdirectory | `state/` below the mount | `register` does `chmod 0700` on its directory, and a process that runs as 10001 may not do that to the root of a volume. A fresh volume can hold `lost+found` too. |
+| `Parallel` | `podManagementPolicy` | Replicas have nothing to do with one another. With `OrderedReady` a replica that cannot register would hold back the others. Updates still go one pod at a time. |
+| Headless Service | no ports | A StatefulSet has to name one. Nothing connects to an Agent. |
+
+**Chromium** needed three things that only showed on a real cluster:
+
+- The sandbox cannot run under the default security context, because `RuntimeDefault` blocks the user
+  namespaces it wants and `chrome-sandbox` needs `CAP_SYS_ADMIN`. The Agent has no setting for
+  `--no-sandbox`, and the Debian launcher `/usr/bin/chromium` starts by clearing `CHROMIUM_FLAGS` from the
+  environment, so the chart mounts a file into `/etc/chromium.d`, which the launcher sources.
+- With a read-only root, Chromium needs a writable `/tmp` for its profile and a writable home
+  directory: without one its crash handler aborts the browser at startup.
+- `/dev/shm` needs nothing, because the Agent passes `--disable-dev-shm-usage`. Shared memory goes to `/tmp`.
+
+`helm test` tries to register with a token the server is bound to refuse, because the image has no curl
+and that exercises what matters: the endpoint answers, its certificate chains to the pinned CA and
+names its host. The server rejects a token that short before it touches anything.
+
+The first install on kind is also what found that external Agents could not work at all in application
+26.2.0.0: the server's registration query has a syntax error, and the control stream deadlocks, with the
+Agent and the server each waiting for the other to speak first. Neither shows without a real server, a real
+PostgreSQL and a real Agent, which is why `scripts/ci-install.sh` goes all the way to a browser check.
+
+The chart has no probes. The Agent has no port to ask, and it retries the control stream for
+ever, so a pod that is `Running` says nothing about the connection and a restart would not help. What
+tells whether an Agent is connected is its status on the server, which is what CI checks.

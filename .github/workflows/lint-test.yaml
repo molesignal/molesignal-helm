@@ -1,11 +1,12 @@
-# Checks every change to the chart.
+# Checks every change to the charts.
 #
 #   static   no cluster: helm lint, the generated-docs check, the render tests, the
 #            mutation tests, and a schema validation of the rendered manifests
-#   install  a real install on a throw-away kind cluster, for each values file in
-#            charts/molesignal/ci, followed by `helm test`. Runs when the chart changed and
-#            once a week, because the chart follows images that move without a change here.
-#            Fails if the application image it would install does not exist.
+#   install  a real install on a throw-away kind cluster, for each values file in the ci/
+#            directory of each chart (scripts/ci-install.sh). Probe Agents register with a server
+#            it installs too, and have to come online. Runs when a chart changed and once a week,
+#            because the charts follow images that move without a change here. Fails if an
+#            image it would install does not exist.
 name: Lint and test
 
 on:
@@ -17,11 +18,11 @@ on:
   workflow_dispatch:
     inputs:
       install_all:
-        description: Install the chart on kind even if nothing changed
+        description: Install the charts on kind even if nothing changed
         type: boolean
         default: false
       image_tag:
-        description: Tag of the application image to install (default latest, or the MOLESIGNAL_IMAGE_TAG variable)
+        description: Tag of the application and Agent images to install (default latest, or the MOLESIGNAL_IMAGE_TAG variable)
         type: string
         default: ""
 
@@ -79,9 +80,15 @@ jobs:
           set -euo pipefail
           for k8s in 1.27.0 1.31.0; do
             for values in "" charts/molesignal/ci/*.yaml examples/*.yaml; do
-              echo "==> Kubernetes ${k8s}, values: ${values:-defaults}"
+              echo "==> molesignal, Kubernetes ${k8s}, values: ${values:-defaults}"
               helm template check charts/molesignal --namespace check \
                 --kube-version "${k8s}" ${values:+--values "${values}"} \
+                | kubeconform -strict -summary -kubernetes-version "${k8s}"
+            done
+            for values in charts/probe-agent/ci/*-values.yaml examples/probe-agent/*.yaml; do
+              echo "==> probe-agent, Kubernetes ${k8s}, values: ${values}"
+              helm template check charts/probe-agent --namespace check \
+                --kube-version "${k8s}" --values "${values}" \
                 | kubeconform -strict -summary -kubernetes-version "${k8s}"
             done
           done
@@ -91,7 +98,8 @@ jobs:
     needs: static
     runs-on: ubuntu-latest
     env:
-      # The application image to install. The chart's own default is `latest`; set the
+      # The application and Agent images to install, which the application's release workflow
+      # publishes under the same tags. The charts' own default is `latest`; set the
       # repository variable MOLESIGNAL_IMAGE_TAG (or the dispatch input) to test another
       # tag, for example a `sha-<commit>` build of the application's main branch.
       IMAGE_TAG: ${{ inputs.image_tag || vars.MOLESIGNAL_IMAGE_TAG || 'latest' }}
@@ -125,19 +133,21 @@ jobs:
         if: steps.changed.outputs.run == 'true'
         run: ct lint --config ct.yaml --all
 
-      - name: The application image must exist
+      - name: The images must exist
         if: steps.changed.outputs.run == 'true'
         run: |
-          if ! scripts/image-published.sh molesignal/molesignal "${IMAGE_TAG}"; then
-            echo "::error title=No application image::ghcr.io/molesignal/molesignal:${IMAGE_TAG} cannot be pulled, so the chart cannot be installed. Publish an image built from the application's main branch under that tag, or set the repository variable MOLESIGNAL_IMAGE_TAG to one that exists (a sha-<commit> tag works). The application's release workflow pushes 'latest' only for stable-channel releases."
-            exit 1
-          fi
+          for image in molesignal probe-agent; do
+            if ! scripts/image-published.sh "molesignal/${image}" "${IMAGE_TAG}"; then
+              echo "::error title=No ${image} image::ghcr.io/molesignal/${image}:${IMAGE_TAG} cannot be pulled, so the chart cannot be installed. Publish an image built from the application's main branch under that tag, or set the repository variable MOLESIGNAL_IMAGE_TAG to one that exists (a sha-<commit> tag works). The application's release workflow pushes 'latest' only for stable-channel releases."
+              exit 1
+            fi
+          done
 
       - uses: helm/kind-action@v1.15.1
         if: steps.changed.outputs.run == 'true'
 
       # Not `ct install`: it deletes the namespace before anything can read the logs of a
       # container that crashed. This script prints them first (scripts/ci-install.sh).
-      - name: Install every ci/ values file, then helm test
+      - name: Install every ci/ values file of every chart, and check it
         if: steps.changed.outputs.run == 'true'
         run: scripts/ci-install.sh

@@ -1,0 +1,116 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "probe-agent chart values",
+  "type": "object",
+  "additionalProperties": false,
+  "$defs": {
+    "stringMap": { "type": "object", "additionalProperties": { "type": "string" } },
+    "quantity": {
+      "type": "string",
+      "pattern": "^[0-9]+(\\.[0-9]+)?(Ki|Mi|Gi|Ti|Pi|Ei|k|M|G|T|P|E|m)?$"
+    },
+    "objectList": { "type": "array", "items": { "type": "object" } }
+  },
+  "properties": {
+    "global": {
+      "type": "object",
+      "properties": {
+        "imageRegistry": { "type": "string" },
+        "imagePullSecrets": { "$ref": "#/$defs/objectList" }
+      }
+    },
+    "nameOverride": { "type": "string" },
+    "fullnameOverride": { "type": "string" },
+    "commonLabels": { "$ref": "#/$defs/stringMap" },
+    "commonAnnotations": { "$ref": "#/$defs/stringMap" },
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "repository": { "type": "string", "minLength": 1 },
+        "tag": { "type": "string" },
+        "digest": { "type": "string", "pattern": "^(sha256:[a-f0-9]{64})?$" },
+        "pullPolicy": { "enum": ["Always", "IfNotPresent", "Never"] }
+      }
+    },
+    "imagePullSecrets": { "$ref": "#/$defs/objectList" },
+    "replicaCount": { "type": "integer", "minimum": 0 },
+    "registration": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "endpoint": { "type": "string" },
+        "caCertificateBase64": { "type": "string" },
+        "token": { "type": "string" },
+        "existingSecret": { "type": "string" },
+        "existingSecretKey": { "type": "string", "minLength": 1 },
+        "resources": { "type": "object" }
+      }
+    },
+    "maxConcurrent": { "type": "integer", "minimum": 1, "maximum": 32 },
+    "browser": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "maxConcurrent": { "type": "integer", "minimum": 0, "maximum": 4 },
+        "sandbox": { "type": "boolean" },
+        "tmp": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "medium": { "enum": ["", "Memory"] },
+            "sizeLimit": { "$ref": "#/$defs/quantity" }
+          }
+        }
+      }
+    },
+    "logLevel": { "type": "string", "minLength": 1 },
+    "persistence": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "size": { "$ref": "#/$defs/quantity" },
+        "storageClass": { "type": "string" },
+        "accessModes": {
+          "type": "array",
+          "items": { "enum": ["ReadWriteOnce", "ReadWriteOncePod", "ReadWriteMany", "ReadOnlyMany"] }
+        },
+        "annotations": { "$ref": "#/$defs/stringMap" }
+      }
+    },
+    "persistentVolumeClaimRetentionPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "whenDeleted": { "enum": ["Retain", "Delete"] },
+        "whenScaled": { "enum": ["Retain", "Delete"] }
+      }
+    },
+    "resources": { "type": "object" },
+    "podSecurityContext": { "type": "object" },
+    "securityContext": { "type": "object" },
+    "serviceAccount": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "create": { "type": "boolean" },
+        "name": { "type": "string" },
+        "annotations": { "$ref": "#/$defs/stringMap" },
+        "automount": { "type": "boolean" }
+      }
+    },
+    "extraEnv": { "$ref": "#/$defs/objectList" },
+    "extraEnvFrom": { "$ref": "#/$defs/objectList" },
+    "extraVolumes": { "$ref": "#/$defs/objectList" },
+    "extraVolumeMounts": { "$ref": "#/$defs/objectList" },
+    "podAnnotations": { "$ref": "#/$defs/stringMap" },
+    "podLabels": { "$ref": "#/$defs/stringMap" },
+    "nodeSelector": { "$ref": "#/$defs/stringMap" },
+    "tolerations": { "$ref": "#/$defs/objectList" },
+    "affinity": { "type": "object" },
+    "topologySpreadConstraints": { "$ref": "#/$defs/objectList" },
+    "priorityClassName": { "type": "string" },
+    "extraObjects": { "$ref": "#/$defs/objectList" }
+  }
+}

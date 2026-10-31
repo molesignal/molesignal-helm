@@ -1,0 +1,59 @@
+{{- /*
+`helm test <release>`: tries to register with a token the server is bound to refuse. Being
+refused by the server proves what an Agent needs before it has an identity: the endpoint answers,
+and its certificate matches both the CA and the host name. The refusal happens before anything is
+stored, so this leaves nothing behind. It runs in the Agent image, which has no curl.
+*/ -}}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "probe-agent.fullname" . }}-test-connection
+  labels:
+    helm.sh/chart: {{ include "probe-agent.chart" . }}
+    app.kubernetes.io/name: {{ include "probe-agent.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: test
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+  annotations:
+    helm.sh/hook: test
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  {{- with include "probe-agent.imagePullSecrets" . }}
+  imagePullSecrets:
+    {{- . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.podSecurityContext }}
+  securityContext:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  containers:
+    - name: register-refused
+      image: {{ include "probe-agent.image" . }}
+      imagePullPolicy: {{ .Values.image.pullPolicy }}
+      command: ["/bin/sh", "-c"]
+      args:
+        - |
+          output="$(probe-agent --state-dir /tmp/state register \
+            --endpoint "$ENDPOINT" --token not-a-real-token --ca-certificate-base64 "$CA_CERTIFICATE" 2>&1)"
+          echo "$output"
+          case "$output" in
+            *"invalid Probe register token"*) echo "the server answered and refused the token, as it should" ;;
+            *) echo "the server did not answer: check registration.endpoint, the CA and [probe].server_names"; exit 1 ;;
+          esac
+      env:
+        - name: ENDPOINT
+          value: {{ .Values.registration.endpoint | quote }}
+        - name: CA_CERTIFICATE
+          value: {{ .Values.registration.caCertificateBase64 | quote }}
+      {{- with .Values.securityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+  volumes:
+    - name: tmp
+      emptyDir: {}

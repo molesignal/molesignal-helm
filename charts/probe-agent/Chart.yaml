@@ -1,0 +1,51 @@
+apiVersion: v2
+name: probe-agent
+description: >-
+  Private locations for MoleSignal synthetic monitoring. Runs Probe Agents that
+  register with a MoleSignal server, keep their identity on a volume and run HTTP,
+  TCP, SSH, DNS, ICMP, TLS, gRPC and browser checks from inside your network.
+type: application
+
+# The chart is versioned on its own (SemVer), apart from the molesignal chart and from
+# the application. Bump `version` for every chart change. `appVersion` is the default
+# image tag, and that is `latest`, like the molesignal chart. See docs/versioning.md.
+version: 0.1.0
+appVersion: "latest"
+
+kubeVersion: ">=1.27.0-0"
+
+home: https://www.molesignal.com
+icon: https://www.molesignal.com/icon-512.png
+# The first entry becomes the `org.opencontainers.image.source` label of the OCI
+# artifact, which is what ties the package on ghcr.io to this repository.
+sources:
+  - https://github.com/molesignal/molesignal-helm
+  - https://github.com/molesignal/molesignal
+keywords:
+  - observability
+  - synthetic-monitoring
+  - uptime
+  - monitoring
+maintainers:
+  - name: MoleSignal
+    url: https://github.com/molesignal
+
+annotations:
+  artifacthub.io/category: monitoring-logging
+  artifacthub.io/license: Apache-2.0
+  artifacthub.io/containsSecurityUpdates: "false"
+  artifacthub.io/prerelease: "true"
+  artifacthub.io/images: |
+    - name: probe-agent
+      image: ghcr.io/molesignal/probe-agent:latest
+      platforms:
+        - linux/amd64
+        - linux/arm64
+  artifacthub.io/links: |
+    - name: Documentation
+      url: https://github.com/molesignal/molesignal-helm/tree/main/charts/probe-agent
+    - name: Application
+      url: https://github.com/molesignal/molesignal
+  artifacthub.io/changes: |
+    - kind: added
+      description: First release. Probe Agents as a StatefulSet that registers once per replica and keeps its identity on a volume

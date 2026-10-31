@@ -18,9 +18,11 @@ from contextlib import contextmanager
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-# `MOLESIGNAL_CHART` points the whole suite at another copy of the chart; mutate.py
-# uses it to check that the tests fail when the chart is broken.
+# These point the whole suite at another copy of a chart or of the install script; mutate.py
+# uses them to check that the tests fail when one of those is broken.
 CHART = Path(os.environ.get("MOLESIGNAL_CHART") or ROOT / "charts" / "molesignal").resolve()
+PROBE_CHART = Path(os.environ.get("PROBE_AGENT_CHART") or ROOT / "charts" / "probe-agent").resolve()
+CI_INSTALL = Path(os.environ.get("CI_INSTALL_SCRIPT") or ROOT / "scripts" / "ci-install.sh").resolve()
 ENV = {**os.environ, "KUBECONFIG": os.devnull}
 
 DNS_LABEL = re.compile(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$")
@@ -139,9 +141,9 @@ def render(
             tmp.unlink(missing_ok=True)
 
 
-def refuses(msg: str, expect: str, values: dict | None = None, sets: list[str] | None = None) -> None:
+def refuses(msg: str, expect: str, values: dict | None = None, sets: list[str] | None = None, *, chart: Path | str = CHART) -> None:
     """A render that must fail, with `expect` in the message."""
-    out = render(values, sets)
+    out = render(values, sets, chart=chart)
     check(
         out.returncode != 0 and expect in out.stderr,
         msg,
@@ -150,8 +152,8 @@ def refuses(msg: str, expect: str, values: dict | None = None, sets: list[str] |
 
 
 @contextmanager
-def chart_variant(*, fake_lookup: bool = False, notes_preview: bool = False):
-    """A temporary copy of the chart, modified for testing.
+def chart_variant(*, fake_lookup: bool = False, notes_preview: bool = False, source: Path = CHART):
+    """A temporary copy of a chart, modified for testing.
 
     fake_lookup   `lookup` cannot run offline, so the single call that reads an
                   existing Secret is replaced by a read from `.Values.__fakeSecrets`
@@ -161,8 +163,8 @@ def chart_variant(*, fake_lookup: bool = False, notes_preview: bool = False):
     """
     tmp = Path(tempfile.mkdtemp(prefix="chart-variant-"))
     try:
-        copy = tmp / "molesignal"
-        shutil.copytree(CHART, copy)
+        copy = tmp / source.name
+        shutil.copytree(source, copy)
         if fake_lookup:
             helpers = copy / "templates" / "_helpers.tpl"
             text = helpers.read_text()
@@ -174,7 +176,7 @@ def chart_variant(*, fake_lookup: bool = False, notes_preview: bool = False):
         if notes_preview:
             (copy / "templates" / "notes-preview.yaml").write_text(
                 "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: notes-preview\n"
-                'data:\n  notes: {{ include "molesignal.notes" . | toJson }}\n'
+                f'data:\n  notes: {{{{ include "{source.name}.notes" . | toJson }}}}\n'
             )
         yield copy
     finally:
@@ -305,7 +307,7 @@ def integrity(m: Rendered, label: str) -> None:
             problem(f"Service/{name}: selects {len(targets)} workloads, expected exactly 1")
             continue
         names = set().union(*(port_names(c) for c in containers(targets[0])))
-        for p in svc["spec"]["ports"]:
+        for p in svc["spec"].get("ports", []):
             tp = p.get("targetPort")
             if isinstance(tp, str) and tp not in names:
                 problem(f"Service/{name}: targetPort {tp!r} is not a port of {targets[0]['metadata']['name']}")

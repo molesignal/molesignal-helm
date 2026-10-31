@@ -1,0 +1,7 @@
+# Installed by scripts/ci-install.sh, like one-time-token-values.yaml: two replicas that
+# register on their own with one Agent Token.
+replicaCount: 2
+registration:
+  endpoint: https://ci-molesignal.ci-probe-agent.svc.cluster.local:5084
+  caCertificateBase64: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCnJlcGxhY2VkLWJ5LXNjcmlwdHMtY2ktaW5zdGFsbC5zaAotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tCg==
+  existingSecret: ci-agent-token

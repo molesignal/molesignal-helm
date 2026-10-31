@@ -1,0 +1,215 @@
+{{- /*
+A StatefulSet, because an Agent is its identity: the key and the certificate it gets when it
+registers have to outlive the pod, and every replica has its own. An init container registers
+when there is no identity yet and does nothing otherwise, since the token is good once and
+`probe-agent register` refuses to replace an identity.
+*/ -}}
+{{- $mount := include "probe-agent.volumeMountPath" . -}}
+{{- $stateDir := include "probe-agent.stateDir" . -}}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "probe-agent.fullname" . }}
+  labels:
+    {{- include "probe-agent.labels" . | nindent 4 }}
+  {{- with include "probe-agent.annotations" (dict "ctx" .) }}
+  annotations:
+    {{- . | nindent 4 }}
+  {{- end }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  serviceName: {{ include "probe-agent.fullname" . }}
+  # The replicas have nothing to do with one another, so one that cannot register must not
+  # hold the next one back. This only concerns scaling; updates still go one pod at a time.
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      {{- include "probe-agent.selectorLabels" . | nindent 6 }}
+  {{- with .Values.persistentVolumeClaimRetentionPolicy }}
+  persistentVolumeClaimRetentionPolicy:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  template:
+    metadata:
+      labels:
+        {{- include "probe-agent.labels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "probe-agent.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automount }}
+      {{- with include "probe-agent.imagePullSecrets" . }}
+      imagePullSecrets:
+        {{- . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.priorityClassName }}
+      priorityClassName: {{ . }}
+      {{- end }}
+      initContainers:
+        - name: register
+          image: {{ include "probe-agent.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/bin/sh", "-ec"]
+          args:
+            - |
+              if [ -e "$STATE_DIR/identity.json" ]; then
+                echo "already registered: using the identity in $STATE_DIR"
+                exit 0
+              fi
+              if [ -z "${REGISTER_TOKEN:-}" ]; then
+                echo "no identity in $STATE_DIR and no token to register with: set registration.existingSecret or registration.token" >&2
+                exit 1
+              fi
+              echo "registering with $REGISTER_ENDPOINT"
+              exec probe-agent --state-dir "$STATE_DIR" register \
+                --endpoint "$REGISTER_ENDPOINT" \
+                --token "$REGISTER_TOKEN" \
+                --ca-certificate-base64 "$CA_CERTIFICATE"
+          env:
+            - name: STATE_DIR
+              value: {{ $stateDir }}
+            - name: REGISTER_ENDPOINT
+              value: {{ .Values.registration.endpoint | quote }}
+            - name: CA_CERTIFICATE
+              value: {{ .Values.registration.caCertificateBase64 | quote }}
+            - name: REGISTER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "probe-agent.tokenSecretName" . }}
+                  key: {{ .Values.registration.existingSecretKey }}
+                  # Optional: the Secret can go once the Agents have an identity, and a replica
+                  # without one then says so itself instead of hanging in CreateContainerConfigError.
+                  optional: true
+            - name: RUST_LOG
+              value: {{ .Values.logLevel | quote }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with .Values.extraEnvFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.registration.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: state
+              mountPath: {{ $mount }}
+            {{- with .Values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+      containers:
+        - name: probe-agent
+          image: {{ include "probe-agent.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - --state-dir
+            - {{ $stateDir }}
+            - run
+            - --max-concurrent
+            - {{ .Values.maxConcurrent | int | quote }}
+            - --max-browser-concurrent
+            - {{ .Values.browser.maxConcurrent | int | quote }}
+          env:
+            - name: RUST_LOG
+              value: {{ .Values.logLevel | quote }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with .Values.extraEnvFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: state
+              mountPath: {{ $mount }}
+            # Chromium keeps its profile here and, because the Agent starts it with
+            # --disable-dev-shm-usage, the shared memory that would go to /dev/shm.
+            - name: tmp
+              mountPath: /tmp
+            - name: home
+              mountPath: /home/molesignal
+            {{- if not .Values.browser.sandbox }}
+            - name: chromium-flags
+              mountPath: /etc/chromium.d/no-sandbox
+              subPath: no-sandbox
+              readOnly: true
+            {{- end }}
+            {{- with .Values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir: {{ toJson .Values.browser.tmp }}
+        - name: home
+          emptyDir: {}
+        {{- if not .Values.browser.sandbox }}
+        - name: chromium-flags
+          configMap:
+            name: {{ include "probe-agent.fullname" . }}-chromium-flags
+        {{- end }}
+        {{- if not .Values.persistence.enabled }}
+        - name: state
+          emptyDir: {}
+        {{- end }}
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+  {{- if .Values.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: state
+        labels:
+          {{- include "probe-agent.selectorLabels" . | nindent 10 }}
+        {{- with .Values.persistence.annotations }}
+        annotations:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+      spec:
+        accessModes:
+          {{- toYaml .Values.persistence.accessModes | nindent 10 }}
+        {{- if .Values.persistence.storageClass }}
+        storageClassName: {{ if eq "-" .Values.persistence.storageClass }}""{{ else }}{{ .Values.persistence.storageClass | quote }}{{ end }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.persistence.size | quote }}
+  {{- end }}

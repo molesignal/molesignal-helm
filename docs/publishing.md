@@ -1,11 +1,12 @@
-# Publishing the chart
+# Publishing the charts
 
-The chart is published to two places from the same package:
+Each chart is published to two places from the same package. One Helm repository holds all of
+them; on ghcr.io each chart is a package of its own:
 
 | Where | Install with | Needs |
 | --- | --- | --- |
 | A Helm repository on GitHub Pages | `helm repo add molesignal https://charts.molesignal.com` | GitHub Pages on the `gh-pages` branch, and the domain below |
-| GitHub Container Registry (OCI) | `helm install ... oci://ghcr.io/molesignal/charts/molesignal --version <v>` | the package set to public |
+| GitHub Container Registry (OCI) | `helm install ... oci://ghcr.io/molesignal/charts/<chart> --version <v>` | the package set to public |
 
 The first address is the one the website's quick start already shows. **A custom domain is not
 technically required**: GitHub Pages serves the same index at
@@ -34,10 +35,10 @@ GitHub organization or repository.
    validates the manifests against the Kubernetes schemas and installs both topologies on kind. Fix what
    it finds, then merge.
 
-   The install needs an application image. It uses `ghcr.io/molesignal/molesignal:latest`, and the
-   job **fails with a message saying so if that tag does not exist**; the application's release
-   workflow pushes `latest` only for stable-channel releases. Either publish an image built from the
-   application's `main` under that tag, or set the repository variable `MOLESIGNAL_IMAGE_TAG`
+   The install needs images. It uses `ghcr.io/molesignal/molesignal:latest` and
+   `ghcr.io/molesignal/probe-agent:latest`, and the job **fails with a message saying so if that tag
+   does not exist**; the application's release workflow pushes `latest` only for stable-channel
+   releases. Either publish images built from the application's `main` under that tag, or set the repository variable `MOLESIGNAL_IMAGE_TAG`
    (*Settings → Secrets and variables → Actions → Variables*) to a tag that exists, such as the
    `sha-<commit>` tag of such a build, or pass `image_tag` when you run the workflow by hand. Do not
    merge before the install job has run and passed once: the merge publishes the chart. The merge triggers the [release workflow](../.github/workflows/release.yaml),
@@ -51,7 +52,8 @@ GitHub organization or repository.
    `.nojekyll`, on `gh-pages` when it creates it, so the domain survives the switch.)
 5. **Make the package public.** A package pushed by a workflow starts out private. In the
    organization: *Packages → `charts/molesignal` → Package settings → Change visibility →
-   Public*. Until then `helm pull` needs a login.
+   Public*. Until then `helm pull` needs a login. **Every new chart needs this once**, after its first
+   release: `charts/probe-agent` too.
 6. **Point `charts.molesignal.com` at it** (below).
 7. **Check it from a machine that is not yours:**
 
@@ -61,7 +63,7 @@ GitHub organization or repository.
    helm pull oci://ghcr.io/molesignal/charts/molesignal --version 0.1.0
    ```
 
-Every later release is just a merged pull request that bumps the chart version
+Every later release is just a merged pull request that bumps a chart's version
 ([versioning](versioning.md)).
 
 ## The custom domain

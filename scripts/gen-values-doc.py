@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Write the values table of the chart README from values.yaml.
+"""Write the values table of each chart's README from its values.yaml.
 
 A comment that starts with `# --` documents the key right below it (a following
 `# ` line continues it). A documented key becomes one row and its children are
@@ -21,13 +21,12 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-CHART = ROOT / "charts" / "molesignal"
-README = CHART / "README.md"
+CHARTS = sorted(path.parent for path in (ROOT / "charts").glob("*/Chart.yaml"))
 START, END = "<!-- values:start -->", "<!-- values:end -->"
 
 
-def load_values() -> dict:
-    out = subprocess.run(["yq", "-o=json", ".", str(CHART / "values.yaml")], capture_output=True, text=True, check=True)
+def load_values(chart: Path) -> dict:
+    out = subprocess.run(["yq", "-o=json", ".", str(chart / "values.yaml")], capture_output=True, text=True, check=True)
     return json.loads(out.stdout)
 
 
@@ -93,29 +92,34 @@ def render(table: list[tuple[str, str, str, str]]) -> str:
     return "\n".join(lines)
 
 
-def main() -> int:
-    values = load_values()
-    docs = read_docs((CHART / "values.yaml").read_text())
+def update(chart: Path) -> int:
+    readme = chart / "README.md"
+    values = load_values(chart)
+    docs = read_docs((chart / "values.yaml").read_text())
     table, missing = rows(values, docs)
     if missing:
-        print("values without a `# --` description:\n  " + "\n  ".join(missing))
+        print(f"values of {chart.name} without a `# --` description:\n  " + "\n  ".join(missing))
         return 1
-    text = README.read_text()
+    text = readme.read_text()
     if START not in text or END not in text:
-        print(f"{README} needs the markers {START} and {END}")
+        print(f"{readme} needs the markers {START} and {END}")
         return 1
     head, rest = text.split(START, 1)
     _, tail = rest.split(END, 1)
     updated = f"{head}{START}\n{render(table)}\n{END}{tail}"
     if "--check" in sys.argv:
         if updated != text:
-            print("charts/molesignal/README.md is out of date; run: python3 scripts/gen-values-doc.py")
+            print(f"charts/{chart.name}/README.md is out of date; run: python3 scripts/gen-values-doc.py")
             return 1
-        print(f"README values table is up to date ({len(table)} rows)")
+        print(f"{chart.name}: README values table is up to date ({len(table)} rows)")
         return 0
-    README.write_text(updated)
-    print(f"wrote {len(table)} rows")
+    readme.write_text(updated)
+    print(f"{chart.name}: wrote {len(table)} rows")
     return 0
+
+
+def main() -> int:
+    return max(update(chart) for chart in CHARTS)
 
 
 if __name__ == "__main__":

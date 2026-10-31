@@ -1,0 +1,7 @@
+# Installed by scripts/ci-install.sh on a throw-away kind cluster, next to a MoleSignal
+# server it installs first (molesignal-server.yaml): one replica, with a one-time token. The
+# script creates the Secret, and replaces the CA with the one that server generated.
+registration:
+  endpoint: https://ci-molesignal.ci-probe-agent.svc.cluster.local:5084
+  caCertificateBase64: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCnJlcGxhY2VkLWJ5LXNjcmlwdHMtY2ktaW5zdGFsbC5zaAotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tCg==
+  existingSecret: ci-one-time-token

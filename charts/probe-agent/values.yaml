@@ -1,0 +1,184 @@
+# Default values for the probe-agent chart.
+#
+# Comments that start with `# --` document the key below them and feed the
+# generated table in README.md (see scripts/gen-values-doc.py).
+#
+# There is no working default: an Agent has to be told which server to register
+# with, and with what. Create an Agent Pool location and a token under Synthetics
+# in MoleSignal, then set `registration`. The README walks through it.
+
+global:
+  # -- Replace the registry host of the image (mirror or air-gapped registry).
+  # `ghcr.io/molesignal/probe-agent` becomes `<imageRegistry>/molesignal/probe-agent`.
+  imageRegistry: ""
+  # -- Pull secrets for every pod the chart creates. Merged with `imagePullSecrets`.
+  imagePullSecrets: []
+
+# -- Override the chart name used in resource names and labels.
+nameOverride: ""
+# -- Override the prefix of every resource name (default: the release name).
+# Kept to 43 characters.
+fullnameOverride: ""
+# -- Labels added to every resource.
+commonLabels: {}
+# -- Annotations added to every resource.
+commonAnnotations: {}
+
+image:
+  # -- Agent image. It carries Chromium for browser checks.
+  repository: ghcr.io/molesignal/probe-agent
+  # -- Image tag. Empty means the chart's `appVersion`, which is `latest`. That tag
+  # moves: pin a version (or `digest`) for anything but trying the chart out.
+  tag: ""
+  # -- Image digest (`sha256:...`). When set it is used together with the tag.
+  digest: ""
+  # -- Image pull policy. `Always`, because the default tag moves; use
+  # `IfNotPresent` once you pin one.
+  pullPolicy: Always
+# -- Pull secrets, as a list of `{name: ...}`.
+imagePullSecrets: []
+
+# -- Replicas. Each one is an Agent of its own in the location, with its own identity,
+# and each one registers, so more than one needs an Agent Token: a one-time token
+# registers a single Agent.
+replicaCount: 1
+
+registration:
+  # -- Address of the server's register port, for example
+  # `https://molesignal.example.com:5084`. Required. The host has to be one of the
+  # `[probe].server_names` of the server, and the port reachable at layer 4: the Agent
+  # checks the server's certificate against the CA below and shows a client certificate
+  # later on, so nothing in between may terminate TLS.
+  endpoint: ""
+  # -- Base64 of the server's Probe CA, the `--ca-certificate-base64` of the register
+  # command. Required. Not a secret: it only tells the Agent which server to trust.
+  caCertificateBase64: ""
+  # -- Token to register with, stored in a Secret the chart creates. Prefer
+  # `existingSecret`: a value given here also ends up in the release's history. A one-time
+  # token registers one Agent and expires within the hour. An Agent Token (`ms_probe_...`)
+  # registers any number until it expires or is disabled.
+  token: ""
+  # -- Existing Secret that holds the token. An Agent only reads it until it has an
+  # identity, so you can delete the Secret afterwards; a replica without an identity then
+  # stays in Init and says so in its log.
+  existingSecret: ""
+  # -- Key of the token inside that Secret (the Secret the chart creates uses it too).
+  existingSecretKey: token
+  # -- Resource requests and limits of the init container that registers.
+  resources: {}
+
+# -- Checks one Agent runs at the same time (`--max-concurrent`). The Agent caps it at 32.
+maxConcurrent: 4
+
+browser:
+  # -- Browser checks one Agent runs at the same time (`--max-browser-concurrent`), each
+  # with a Chromium of its own and within `maxConcurrent`. The Agent caps it at 4. 0 stops
+  # the Agent from offering browser checks at all.
+  maxConcurrent: 1
+  # -- Run Chromium with its own sandbox. Off by default because the sandbox needs user
+  # namespaces, which the `RuntimeDefault` seccomp profile below blocks; `--no-sandbox` is
+  # what works under the `restricted` Pod Security Standard. A page that breaks out of a
+  # renderer then has this pod's rights, including its Agent key. To switch it on,
+  # also set `seccompProfile: {type: Unconfined}` in `securityContext`, on nodes whose
+  # kernel allows unprivileged user namespaces.
+  sandbox: false
+  # -- `emptyDir` settings of `/tmp`, where Chromium keeps its profile and its shared
+  # memory (the Agent starts it with `--disable-dev-shm-usage`, so `/dev/shm` stays unused).
+  # For example `{medium: Memory, sizeLimit: 1Gi}`; memory counts towards the limit in
+  # `resources`, and going over `sizeLimit` evicts the pod.
+  tmp: {}
+
+# -- Log filter of the Agent, in `tracing` env-filter syntax (`RUST_LOG`).
+logLevel: probe_agent=info
+
+persistence:
+  # -- Keep each Agent's identity (its key and certificate) and its unsent results on a
+  # PersistentVolumeClaim, so that a new pod is the same Agent. When false an `emptyDir` is
+  # used: every new pod registers as a new Agent and the old one stays behind as offline.
+  enabled: true
+  # -- Volume size per replica. The identity takes a few kilobytes; the rest is for results
+  # that wait while the server cannot be reached.
+  size: 1Gi
+  # -- Storage class. Empty uses the cluster default.
+  storageClass: ""
+  # -- Access modes.
+  accessModes:
+    - ReadWriteOnce
+  # -- Annotations of the PVCs.
+  annotations: {}
+# -- What happens to the PVCs when the StatefulSet is deleted or scaled down
+# (`whenDeleted` / `whenScaled`: `Retain` or `Delete`). Empty keeps the cluster default,
+# `Retain`, which lets an Agent come back with its identity.
+persistentVolumeClaimRetentionPolicy: {}
+
+# -- Resource requests and limits of the Agent. Most of it is for Chromium: size the
+# memory for `browser.maxConcurrent` pages (see the README), or lower it when you set that to 0.
+resources:
+  requests:
+    cpu: 200m
+    memory: 512Mi
+  limits:
+    memory: 2Gi
+
+# -- Pod security context. The image runs as uid/gid 10001. `ping_group_range` lets the
+# Agent send pings (ICMP checks, and traceroute after a failure) without `NET_RAW`.
+podSecurityContext:
+  fsGroup: 10001
+  fsGroupChangePolicy: OnRootMismatch
+  sysctls:
+    - name: net.ipv4.ping_group_range
+      value: "0 2147483647"
+# -- Container security context, for the Agent and the init container. Passes the
+# `restricted` Pod Security Standard.
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+  seccompProfile:
+    type: RuntimeDefault
+
+serviceAccount:
+  # -- Create a service account.
+  create: true
+  # -- Name of the service account. Defaults to the full name.
+  name: ""
+  # -- Annotations for the service account.
+  annotations: {}
+  # -- Mount the service account token into the pods. The Agent does not call the
+  # Kubernetes API, so it is off by default.
+  automount: false
+
+# -- Extra environment variables for the Agent and the init container, for example
+# `HTTP_PROXY`, `HTTPS_PROXY` and `NO_PROXY`, which HTTP checks honour.
+extraEnv: []
+# -- Extra `envFrom` sources for the Agent and the init container.
+extraEnvFrom: []
+# -- Extra volumes for the pods.
+extraVolumes: []
+# -- Extra volume mounts for the Agent and the init container.
+extraVolumeMounts: []
+
+# -- Annotations added to the pods.
+podAnnotations: {}
+# -- Labels added to the pods.
+podLabels: {}
+# -- Node selector. A location is often a place: use it to keep the Agents there.
+nodeSelector: {}
+# -- Tolerations.
+tolerations: []
+# -- Affinity.
+affinity: {}
+# -- Topology spread constraints. The chart does not add the label selector for you;
+# use `app.kubernetes.io/instance` and `app.kubernetes.io/component: agent`.
+topologySpreadConstraints: []
+# -- Priority class.
+priorityClassName: ""
+
+# -- Additional Kubernetes manifests to deploy with the release. Each item is a
+# complete object, and may use template expressions, for example a NetworkPolicy.
+extraObjects: []
