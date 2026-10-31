@@ -121,4 +121,51 @@ entries:
     urls:
     - https://github.com/molesignal/molesignal-helm/releases/download/molesignal-0.1.0/molesignal-0.1.0.tgz
     version: 0.1.0
-generated: "2026-10-31T09:05:10.961096893Z"
+  probe-agent:
+  - annotations:
+      artifacthub.io/category: monitoring-logging
+      artifacthub.io/changes: |
+        - kind: added
+          description: First release. Probe Agents as a StatefulSet that registers once per replica and keeps its identity on a volume
+      artifacthub.io/containsSecurityUpdates: "false"
+      artifacthub.io/images: |
+        - name: probe-agent
+          image: ghcr.io/molesignal/probe-agent:latest
+          platforms:
+            - linux/amd64
+            - linux/arm64
+      artifacthub.io/license: Apache-2.0
+      artifacthub.io/links: |
+        - name: Documentation
+          url: https://github.com/molesignal/molesignal-helm/tree/main/charts/probe-agent
+        - name: Application
+          url: https://github.com/molesignal/molesignal
+      artifacthub.io/prerelease: "true"
+    apiVersion: v2
+    appVersion: latest
+    created: "2026-10-31T14:01:58.288291829Z"
+    description: Private locations for MoleSignal synthetic monitoring. Runs Probe
+      Agents that register with a MoleSignal server, keep their identity on a volume
+      and run HTTP, TCP, SSH, DNS, ICMP, TLS, gRPC and browser checks from inside
+      your network.
+    digest: 55592ebff3c995447434852497f28910323cb21cf48ea54fde8bd75e41bcf1b0
+    home: https://www.molesignal.com
+    icon: https://www.molesignal.com/icon-512.png
+    keywords:
+    - observability
+    - synthetic-monitoring
+    - uptime
+    - monitoring
+    kubeVersion: '>=1.27.0-0'
+    maintainers:
+    - name: MoleSignal
+      url: https://github.com/molesignal
+    name: probe-agent
+    sources:
+    - https://github.com/molesignal/molesignal-helm
+    - https://github.com/molesignal/molesignal
+    type: application
+    urls:
+    - https://github.com/molesignal/molesignal-helm/releases/download/probe-agent-0.1.0/probe-agent-0.1.0.tgz
+    version: 0.1.0
+generated: "2026-10-31T14:01:58.288298755Z"
