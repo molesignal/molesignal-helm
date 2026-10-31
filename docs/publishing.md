@@ -10,8 +10,7 @@ The chart is published to two places from the same package:
 The first address is the one the website's quick start already shows. **A custom domain is not
 technically required**: GitHub Pages serves the same index at
 `https://molesignal.github.io/molesignal-helm`, and the OCI address needs no domain at all. But
-`charts.molesignal.com` is what people are told to type, so it has to exist before the website's
-Helm tab is switched on. It also gives you an address that survives renaming or moving the
+`charts.molesignal.com` is what people are told to type. It also gives you an address that survives renaming or moving the
 GitHub organization or repository.
 
 ## One-time setup
@@ -112,13 +111,9 @@ downloads keep working whatever happens to the domain. Only the address people t
 
 ## The website
 
-The website's quick start (`components/quick-start-tabs.tsx` in the website repository) has a Helm
-tab that points at this repository, behind the switch `NEXT_PUBLIC_QUICKSTART_ARTIFACTS_READY`,
-together with the binary tab. Before switching it on:
-
-- see the install job of [`Lint and test`](../.github/workflows/lint-test.yaml) pass against the
-  current `latest` (a green job that took seconds skipped the install, because the chart had not changed);
-- close the roadmap issue "Official Helm chart" as completed, so that the roadmap page shows it as done.
+The website's quick start shows the Helm install command (`lib/commands.ts` in the website
+repository), and its tests check that it names `charts.molesignal.com`. Change it there when the way
+to install changes, and run the new command first.
 
 ## Optional: Artifact Hub
 
