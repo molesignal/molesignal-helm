@@ -112,15 +112,12 @@ downloads keep working whatever happens to the domain. Only the address people t
 
 ## The website
 
-The website's quick start (`components/quick-start-tabs.tsx` in the website repository) already
-has a Helm tab that points at this repository, behind the switch
-`NEXT_PUBLIC_QUICKSTART_ARTIFACTS_READY`, together with the binary tab. Before switching it on:
+The website's quick start (`components/quick-start-tabs.tsx` in the website repository) has a Helm
+tab that points at this repository, behind the switch `NEXT_PUBLIC_QUICKSTART_ARTIFACTS_READY`,
+together with the binary tab. Before switching it on:
 
-- replace the `HELM_CMD` example: the `--set storage.s3.*` keys in it are not values of this chart
-  (see [`examples/aws-s3.yaml`](../examples/aws-s3.yaml) for the real ones), and a plain
-  `helm install` with no `--set` already gives a working evaluation install;
-- the page's prerequisites say Kubernetes 1.27 and Helm 3; the chart requires 1.27 or later and
-  Helm 3.8 or later;
+- see the install job of [`Lint and test`](../.github/workflows/lint-test.yaml) pass against the
+  current `latest` (a green job that took seconds skipped the install, because the chart had not changed);
 - close the roadmap issue "Official Helm chart" as completed, so that the roadmap page shows it as done.
 
 ## Optional: Artifact Hub

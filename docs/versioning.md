@@ -17,7 +17,10 @@ The chart deploys the application's `latest` image (and RustFS's and the AWS CLI
 PostgreSQL is pinned, to 17), so a new application release does not need a new chart. What does
 need one is a change in something the chart mirrors from the application's `deploy/k8s`: a role
 name, a setting, a port, a probe. Each changelog entry says which state of the application it was
-written against.
+written against. CI installs the chart on kind once a week, so a `latest` that no longer starts with
+it shows up without anyone changing the chart. A renamed setting does not fail that install: most
+tables of the application's configuration ignore unknown keys, so check the chart's examples and
+docs against `conf/config.toml` when the application renames one.
 
 ## When to bump what
 

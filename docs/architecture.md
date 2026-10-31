@@ -69,7 +69,10 @@ Both are single-instance StatefulSets for evaluation. Details that matter:
   by default), which exceeds PostgreSQL's default 100 in a distributed install.
 - **RustFS** runs as uid 10001. A `bucket-init` sidecar in the same pod does what the compose
   `rustfs-init` service does (create the bucket, remove any bucket policy) and its readiness is
-  "the bucket exists". The pod, and therefore the Service, is ready only then.
+  "the bucket exists". The pod, and therefore the Service, is ready only then. Everything waits for
+  it, so its image has to pull reliably: it comes from Docker Hub (`amazon/aws-cli`) like the chart's
+  other public images, because ECR Public, where the compose file gets the same image, answered
+  anonymous pulls from CI's shared addresses with `429 Too Many Requests` for the whole install.
 - **MoleSignal pods** wait in an init container until the PostgreSQL port accepts connections and
   RustFS's `/health` answers through its Service, instead of crash-looping while those start. The
   init container uses the application image, which has `bash` and `curl`.

@@ -99,6 +99,8 @@ alert:
   resources:
     requests: {cpu: 500m, memory: 1Gi}
 
+# After the install, list the controller's pods as trusted proxies so that the application sees
+# real client addresses: "Exposing it" in the chart README.
 ingress:
   enabled: true
   className: nginx
@@ -117,7 +119,7 @@ ingress:
       hosts:
         - observability.example.com
 
-# Settings of the application itself (see conf/config.toml in the application repository).
-config:
-  compactor:
-    retention_days: 30
+# Settings of the application itself go under `config` (see conf/config.toml in the application
+# repository). Data is kept for 30 days unless you change it: per data stream in the UI, and for
+# streams without their own retention under Settings > Data retention in the `_sys` organization
+# (`config.compactor.retention_days` up to application 26.2.0.0).

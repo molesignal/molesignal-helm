@@ -28,7 +28,7 @@ kubectl --namespace molesignal port-forward svc/molesignal 5080:5080
 也可以从 OCI 仓库安装：
 
 ```bash
-helm install molesignal oci://ghcr.io/molesignal/charts/molesignal --version 0.1.0 \
+helm install molesignal oci://ghcr.io/molesignal/charts/molesignal --version 0.2.0 \
   --namespace molesignal --create-namespace
 ```
 
@@ -46,6 +46,8 @@ PostgreSQL 17 和 S3 存储桶，写法见 [`examples/production.yaml`](examples
   请显式设置 `secrets.cipherKey`、`secrets.clusterToken`，或用 `secrets.existingSecret` 指向你自己管理的 Secret。
 - **`/metrics` 没有鉴权**，和 UI、API 在同一个端口（5080）。通过 Ingress 暴露时请屏蔽它，
   nginx 的写法见 [`examples/ingress-nginx.yaml`](examples/ingress-nginx.yaml)。
+- **Ingress 后面拿不到真实客户端地址**，所有用户都算成控制器的地址。安装后在 `_sys` 组织的
+  **设置 → 客户端 IP 识别** 里把控制器 Pod 的网段列为受信任的代理。
 - 应用对 S3 只使用你配置的密钥；没有密钥时回退到节点的实例角色。**不支持 IRSA / EKS Pod Identity。**
 
 ## 开发
@@ -58,7 +60,7 @@ make package   # 打包到 ./dist
 ```
 
 测试不会连接任何集群（每次调用都把 `KUBECONFIG` 指向 `/dev/null`）。CI 还会用 kubeconform 校验清单，
-并在 kind 集群里真实安装。详见 [CONTRIBUTING](CONTRIBUTING.md)。
+并在 chart 变更时和每周一次在 kind 集群里真实安装。详见 [CONTRIBUTING](CONTRIBUTING.md)。
 
 ## 发布与托管
 

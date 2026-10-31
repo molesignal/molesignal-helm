@@ -61,7 +61,7 @@ def standalone_defaults() -> None:
     check(main["args"] == ["--config", "/app/conf/config.toml"], "starts with the config file")
     check(env["MS_NODE_ROLES"]["value"] == '["standalone"]', "node role is standalone")
     check("MS_CLUSTER_ADVERTISE_ADDR" not in env and "POD_IP" not in env, "does not advertise a peer address")
-    check(env["RELEASE_CHANNEL"]["value"] == "alpha", "release channel defaults to alpha")
+    check(env["RELEASE_CHANNEL"]["value"] == "stable", "release channel defaults to stable")
     check(secret_ref(env, "MS_CIPHER_KEY") == (f"{FULL}-secret", "cipher-key"), "cipher key comes from the core secret")
     check(
         secret_ref(env, "MS_SELF_TELEMETRY_CLUSTER_TOKEN") == (f"{FULL}-secret", "cluster-token"),
@@ -174,7 +174,7 @@ def standalone_defaults() -> None:
     rustfs = container(fs, "rustfs")
     sidecar = container(fs, "bucket-init")
     check(rustfs["image"] == "rustfs/rustfs:latest", "follows RustFS latest", rustfs["image"])
-    check(sidecar["image"] == "public.ecr.aws/aws-cli/aws-cli:latest", "follows the AWS CLI latest", sidecar["image"])
+    check(sidecar["image"] == "amazon/aws-cli:latest", "follows the AWS CLI latest, from Docker Hub", sidecar["image"])
     check(
         rustfs["imagePullPolicy"] == "Always" and sidecar["imagePullPolicy"] == "Always",
         "both are pulled every time",

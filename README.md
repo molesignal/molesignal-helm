@@ -28,7 +28,7 @@ kubectl --namespace molesignal port-forward svc/molesignal 5080:5080
 or, from the OCI registry:
 
 ```bash
-helm install molesignal oci://ghcr.io/molesignal/charts/molesignal --version 0.1.0 \
+helm install molesignal oci://ghcr.io/molesignal/charts/molesignal --version 0.2.0 \
   --namespace molesignal --create-namespace
 ```
 
@@ -74,7 +74,8 @@ make package   # build the .tgz into ./dist
 generated `config.toml`, the guards against bad value combinations). [`make mutate`](tests/mutate.py)
 breaks the chart on purpose and checks that the tests notice. Neither contacts a cluster:
 `KUBECONFIG` is pointed at `/dev/null` for every call. CI additionally validates the manifests
-with kubeconform and installs the chart on a kind cluster. See [CONTRIBUTING](CONTRIBUTING.md).
+with kubeconform and installs the chart on a kind cluster, whenever the chart changes and once a
+week. See [CONTRIBUTING](CONTRIBUTING.md).
 
 ## Releases and hosting
 

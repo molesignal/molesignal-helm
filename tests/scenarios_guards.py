@@ -78,6 +78,8 @@ def notes() -> None:
             "lists the ingress host instead of a port-forward to the UI",
         )
         check("rel-molesignal-router.ns.svc.cluster.local:4317" in dist, "distributed OTLP goes to the router")
+        check("Client IP recognition" in dist, "tells you to trust the ingress controller for client addresses")
+        check("Client IP recognition" not in base, "says nothing about that without an ingress")
 
         prod = text({**EXTERNAL, "objectStore": {"accessKey": "a", "secretKey": "b"}, "secrets": {"cipherKey": "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="}})
         check("Evaluation setup" not in prod and "9001" not in prod, "no bundled-service notes when they are off")
@@ -113,7 +115,7 @@ def metadata() -> None:
     check(chart["kubeVersion"].startswith(">="), "declares a minimum Kubernetes version")
     check(chart["icon"].startswith("https://"), "the icon is an https URL")
     check(not any("@" in str(m) for m in chart.get("maintainers", [])), "no personal e-mail address is published")
-    check(values["mode"] == "standalone" and values["releaseChannel"] == "alpha", "defaults: standalone mode, alpha channel")
+    check(values["mode"] == "standalone" and values["releaseChannel"] == "stable", "defaults: standalone mode, stable channel (the one latest is published for)")
     check(values["postgresql"]["auth"]["password"] == "" and values["rustfs"]["auth"]["accessKey"] == "", "no default passwords are shipped")
     check(values["secrets"]["cipherKey"] == "", "no default cipher key is shipped")
 
@@ -141,7 +143,8 @@ def packaging() -> None:
         proc = subprocess.run(["helm", "package", str(CHART), "--destination", tmp], env=ENV, capture_output=True, text=True)
         check(proc.returncode == 0, "helm package", proc.stderr)
         archives = list(Path(tmp).glob("*.tgz"))
-        check([a.name for a in archives] == ["molesignal-0.1.0.tgz"], "named after the chart version", str([a.name for a in archives]))
+        version = subprocess.run(["yq", ".version", str(CHART / "Chart.yaml")], capture_output=True, text=True, check=True).stdout.strip()
+        check([a.name for a in archives] == [f"molesignal-{version}.tgz"], "named after the chart version", str([a.name for a in archives]))
         if archives:
             with tarfile.open(archives[0]) as tar:
                 names = tar.getnames()

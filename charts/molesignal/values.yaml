@@ -48,8 +48,9 @@ imagePullSecrets: []
 
 # -- Runtime delivery channel, exposed to the application as `RELEASE_CHANNEL`.
 # One of `alpha`, `beta`, `rc`, `stable`. It is metadata only: promoting a build
-# through channels does not change the image, just this value.
-releaseChannel: alpha
+# through channels does not change the image, just this value. `stable` is the
+# channel of the default image: `latest` only moves with stable-channel releases.
+releaseChannel: stable
 
 logging:
   # -- Log filter, in `tracing` env-filter syntax.
@@ -65,20 +66,20 @@ externalUrl: ""
 
 # -- Extra application settings, merged over the chart's own and written to
 # `config.toml`. Mirrors the TOML layout of the application's `conf/config.toml`:
-# a key `compactor.retention_days` becomes `[compactor] retention_days = ...`.
+# a key `compactor.interval_secs` becomes `[compactor] interval_secs = ...`.
 # Values set here win over the keys the chart derives from its other values
 # (`wal.dir`, `object_store.*`, `telemetry.*`, `http.external_url`,
-# `scheduled_reports.renderer.base_url`). Unknown keys can stop the application
-# from starting; check the reference file shipped with the application.
+# `scheduled_reports.renderer.base_url`). Check names against the `conf/config.toml`
+# of the image you run: some tables refuse an unknown key, which stops the
+# application from starting, and the others ignore it without a word.
 config: {}
 #   compactor:
-#     retention_days: 90
-#   cache:
-#     object:
-#       max_bytes: 5368709120
+#     interval_secs: 600
+#   querier:
+#     max_scan_rows: 200000000
 
 # -- Extra environment variables for every MoleSignal container. Any setting can
-# also be given as `MS_<SECTION>_<KEY>` (for example `MS_COMPACTOR_RETENTION_DAYS`);
+# also be given as `MS_<SECTION>_<KEY>` (for example `MS_COMPACTOR_INTERVAL_SECS`);
 # environment variables win over `config.toml`.
 extraEnv: []
 # -- Extra `envFrom` sources for every MoleSignal container.
@@ -274,9 +275,11 @@ rustfs:
       - ReadWriteOnce
   bucketInit:
     # -- Image of the sidecar that creates the bucket and keeps it private. The
-    # pod only becomes ready once the bucket exists.
+    # pod only becomes ready once the bucket exists. The same image is published as
+    # `public.ecr.aws/aws-cli/aws-cli`, but ECR Public answers anonymous pulls from
+    # shared addresses with `429 Too Many Requests`, which holds up the whole install.
     image:
-      repository: public.ecr.aws/aws-cli/aws-cli
+      repository: amazon/aws-cli
       tag: "latest"
       digest: ""
       pullPolicy: Always
@@ -412,8 +415,8 @@ router:
 intake:
   # -- Replicas.
   replicaCount: 2
-  # -- Resource requests and limits. Every replica buffers up to
-  # `intake.max_buffer_memory_mb` (1 GiB by default) before it flushes.
+  # -- Resource requests and limits. Every replica buffers up to 1 GiB by default
+  # (see `[intake]` in the application's `conf/config.toml`) before it flushes.
   resources: {}
   # -- Seconds the kubelet waits after SIGTERM before it kills the process (see `standalone`).
   terminationGracePeriodSeconds: 60
