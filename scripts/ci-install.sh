@@ -47,7 +47,9 @@ for values in "${chart}"/ci/*.yaml; do
 
   if helm install ci "${chart}" --namespace "${ns}" --create-namespace \
     --values "${values}" --set "image.tag=${tag}" --wait --timeout "${timeout}"; then
-    if ! helm test ci --namespace "${ns}" --logs --timeout 5m; then
+    # No --logs: the test pod is deleted as soon as it succeeds, so helm could not read them
+    # and would fail a test that passed. A pod that fails stays, and dump prints its logs.
+    if ! helm test ci --namespace "${ns}" --timeout 5m; then
       status=1
       dump "${ns}"
     fi

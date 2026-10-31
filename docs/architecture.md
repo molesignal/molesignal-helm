@@ -14,7 +14,7 @@ PostgreSQL, where each node registers `MS_CLUSTER_ADVERTISE_ADDR` (`$(POD_IP):50
 
 | Role | Workload | Replicas | Ports | Readiness | Service |
 | --- | --- | --- | --- | --- | --- |
-| `standalone` | StatefulSet + PVC (`/data/wal`) | 1 | 5080 http, 5082 grpc, 4317 otlp-grpc, 5084/5085 probe agents | `/api/v1/readyz` | `<fullname>` |
+| `standalone` | StatefulSet + PVC (`/data/wal`) | 1 | 5080 http, 5082 grpc, 4317 otlp-grpc, 5084/5085 probe agents | `/api/v1/healthz` | `<fullname>` |
 | `router` | Deployment | 2 | 5080, 4317 | `/api/v1/healthz` | `<fullname>-router` |
 | `intake` | StatefulSet + PVC (`/data/wal`) | 2 | 5080, 5082, 4317 | `/api/v1/readyz` | headless |
 | `querier` | Deployment | 2 | 5080, 5082 | `/api/v1/readyz` | `<fullname>-querier` |
@@ -24,6 +24,10 @@ PostgreSQL, where each node registers `MS_CLUSTER_ADVERTISE_ADDR` (`$(POD_IP):50
 The router does not advertise an address (it serves the HTTP API and forwards), exactly as in the
 upstream manifests. There is deliberately **no liveness probe**: a slow write-ahead-log replay must
 not get an intake pod killed.
+
+The readiness paths differ because the servers do. `standalone` and `router` run the full HTTP
+server, which answers `/api/v1/readyz` with 401 without a login and only leaves `/api/v1/healthz` open.
+The other roles run an internal listener that serves both without a login.
 
 The role table lives in one place, `molesignal.roleSpecs` in
 [`_helpers.tpl`](../charts/molesignal/templates/_helpers.tpl); the workload, Service, HPA and

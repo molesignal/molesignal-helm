@@ -27,6 +27,9 @@ against that release and against the settings the application's `main` has renam
 
 ### Fixed
 
+- **`standalone` pods, the default, never became ready.** The readiness probe asked `/api/v1/readyz`,
+  which the application's full HTTP server answers with 401 without a login. It now asks
+  `/api/v1/healthz`, like the router.
 - The examples and docs no longer name settings the application has removed or renamed after 26.2.0.0
   (`compactor.retention_days`, `cache.object.max_bytes`, `intake.max_buffer_memory_mb`). Most tables of
   its configuration ignore unknown keys, so those would have stopped working without a word.

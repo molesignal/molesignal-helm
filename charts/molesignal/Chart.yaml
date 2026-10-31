@@ -59,6 +59,8 @@ annotations:
       url: https://github.com/molesignal/molesignal
   artifacthub.io/changes: |
     - kind: fixed
+      description: Standalone pods, the default, never became ready because the readiness probe asked a path that needs a login
+    - kind: fixed
       description: The bucket sidecar pulls the AWS CLI from Docker Hub, because the anonymous limit of ECR Public could hold up an install
     - kind: changed
       description: releaseChannel defaults to stable, the channel of the default image

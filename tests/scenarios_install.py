@@ -86,8 +86,8 @@ def standalone_defaults() -> None:
     )
     ready = main["readinessProbe"]
     check(
-        ready["httpGet"] == {"path": "/api/v1/readyz", "port": "http"} and ready["failureThreshold"] == 12,
-        "readiness waits for WAL replay (readyz, 12 failures allowed)",
+        ready["httpGet"] == {"path": "/api/v1/healthz", "port": "http"} and ready["failureThreshold"] == 12,
+        "readiness asks healthz, the one probe the full HTTP server serves without a login (12 failures allowed)",
     )
     check("livenessProbe" not in main, "no liveness probe: a slow WAL replay must not get the pod killed")
     mounts = {vm["name"]: vm["mountPath"] for vm in main["volumeMounts"]}

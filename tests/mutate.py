@@ -72,6 +72,8 @@ MUTATIONS = [
      '{{- dict\n    "cipherKey"', '{{- dict "random" (randAlphaNum 8)\n    "cipherKey"', "install"),
     ("appversion-drifts-from-annotation", "Chart.yaml",
      "image: ghcr.io/molesignal/molesignal:latest", "image: ghcr.io/molesignal/molesignal:stable", "guards"),
+    ("standalone-probe-needs-login", "templates/_helpers.tpl",
+     "probe-register, probe-control]\n  probe: {path: /api/v1/healthz,", "probe-register, probe-control]\n  probe: {path: /api/v1/readyz,", "install"),
     ("channel-drifts-from-latest", "values.yaml",
      "releaseChannel: stable", "releaseChannel: alpha", "guards"),
     ("notes-forget-client-addresses", "templates/_notes.tpl",
