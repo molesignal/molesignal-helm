@@ -8,8 +8,9 @@ OpenTelemetry 的可观测性平台：日志、指标、链路追踪共用一套
 | Chart | 部署内容 |
 | --- | --- |
 | [`charts/molesignal`](charts/molesignal) | MoleSignal 本体：单 Pod 的 `standalone` 模式，或拆成 router / intake / querier / compactor / alert 的 `distributed` 模式；可选内置 PostgreSQL 与 RustFS，仅用于体验 |
+| [`charts/probe-agent`](charts/probe-agent) | Probe Agent：从私有地点执行拨测，连接本集群或其他地方的 MoleSignal 服务端 |
 
-Chart 的版本独立于应用版本，规则见 [版本策略](docs/versioning.md)（英文）。
+每个 Chart 的版本都独立于另一个 Chart 和应用版本，规则见 [版本策略](docs/versioning.md)（英文）。
 
 ## 安装
 
@@ -38,6 +39,9 @@ PostgreSQL 17 和 S3 存储桶，写法见 [`examples/production.yaml`](examples
 全部可配置项、chart 管理的密钥（尤其是必须自行备份的 cipher key）、对外暴露 UI 与 OTLP、升级与卸载，
 见 [chart README](charts/molesignal/README.md)（英文）。
 
+要从网络内部执行拨测，接着安装 Probe Agent。它需要服务端的地点和 Token，服务端也要有一个 Agent 能连到的地址，
+见 [`charts/probe-agent`](charts/probe-agent/README.md)（英文）。
+
 ## 几点要先知道
 
 - **备份 cipher key。** 它用来加密字段，丢了就无法再读取这些字段，即使数据库是从备份恢复的。
@@ -60,11 +64,11 @@ make package   # 打包到 ./dist
 ```
 
 测试不会连接任何集群（每次调用都把 `KUBECONFIG` 指向 `/dev/null`）。CI 还会用 kubeconform 校验清单，
-并在 chart 变更时和每周一次在 kind 集群里真实安装。详见 [CONTRIBUTING](CONTRIBUTING.md)。
+并在 chart 变更时和每周一次在 kind 集群里真实安装，Probe Agent 要对真实的服务端注册并上线。详见 [CONTRIBUTING](CONTRIBUTING.md)。
 
 ## 发布与托管
 
-合并一个升级了 chart 版本号的 PR，就会把 chart 发布到 GitHub Pages（传统 Helm 仓库）和 ghcr.io（OCI）。
+合并一个升级了某个 chart 版本号的 PR，就会把这个 chart 发布到 GitHub Pages（传统 Helm 仓库）和 ghcr.io（OCI）。
 首次需要的仓库设置、以及可选的自定义域名，见 [publishing](docs/publishing.md)（英文）。
 
 ## 许可证

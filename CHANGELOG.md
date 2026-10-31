@@ -1,16 +1,42 @@
 # Changelog
 
-Notable changes to the `molesignal` chart. The chart is versioned on its own, apart from the
-application (see [versioning](docs/versioning.md)); each entry names the application version the
-chart deploys by default.
+Notable changes to the charts in this repository. Each chart is versioned on its own, apart from the
+other one and from the application (see [versioning](docs/versioning.md)), so each entry names its
+chart, and the application version the chart deploys by default.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
-[Semantic Versioning](https://semver.org). While the chart is `0.x` a minor version may contain
+[Semantic Versioning](https://semver.org). While a chart is `0.x` a minor version may contain
 breaking changes; they are collected under **Upgrade notes**.
 
 ## [Unreleased]
 
-## [0.2.0] - 2026-10-31
+## [probe-agent 0.1.0] - 2026-10-31
+
+First release. Deploys `ghcr.io/molesignal/probe-agent:latest`, which is the application's 26.2.0.0
+today, and needs a server of that version or later.
+
+### Added
+
+- Probe Agents as a StatefulSet. Each replica registers on its own from an init container, and keeps
+  its identity and its unsent results on a volume of its own, so that a new pod is the same Agent.
+- The registration token comes from a Secret, yours or one the chart makes from a value, and has no
+  default. It is only read until an Agent has an identity, so a new token restarts nothing and
+  the Secret can go. A one-time token for more than one replica is refused when the chart can see it.
+- Browser checks: `browser.maxConcurrent`, a writable `/tmp` and home directory on a read-only root,
+  and `--no-sandbox` by default, because Chromium's sandbox cannot run under the `RuntimeDefault`
+  seccomp profile. `browser.sandbox` turns it back on for nodes that allow it.
+- The default security context passes the `restricted` Pod Security Standard. Pings work through
+  `net.ipv4.ping_group_range`, without `NET_RAW`.
+- `global.imageRegistry`, scheduling values, `extraEnv` for proxies, `helm test` (does the endpoint
+  answer, and with the expected CA), install notes, guards and a JSON schema.
+- `scripts/ci-install.sh` installs a server on kind, creates both kinds of token, installs the Agents
+  and checks that they come online, run a real HTTP and browser check, and survive losing a pod.
+
+### Upgrade notes
+
+None: this is the first release.
+
+## [molesignal 0.2.0] - 2026-10-31
 
 Deploys `ghcr.io/molesignal/molesignal:latest`, which is the application's 26.2.0.0 today. Written
 against that release and against the settings the application's `main` has renamed since.
@@ -51,7 +77,7 @@ against that release and against the settings the application's `main` has renam
 - If your `config` sets `compactor.retention_days`, `cache.object.max_bytes` or
   `intake.max_buffer_memory_mb`, check them against the `conf/config.toml` of the image you run.
 
-## [0.1.0] - 2026-10-11
+## [molesignal 0.1.0] - 2026-10-11
 
 First release. Deploys MoleSignal from `ghcr.io/molesignal/molesignal:latest`, written against the
 application's `main` as of 2026-10-10 (commit `4a4d46b`).
