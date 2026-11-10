@@ -243,7 +243,12 @@ SCRIPT_MUTATIONS = [
         return 1
 ''', '''        echo "the Agents changed: ${before} became ${agents}" >&2
 '''),
-    ("heartbeat-not-awaited", '.status == "online" and .last_heartbeat_at > $stopped', '.status == "online"'),
+    ("heartbeat-not-awaited", '.status == "online" and .lastHeartbeatAt > $stopped', '.status == "online"'),
+    ("old-names-for-the-token", 'required .agentToken', 'required .agent_token'),
+    ("old-names-for-the-location", 'egressPolicy: {allowPrivateNetworks: true}', 'egress_policy: {allow_private_networks: true}'),
+    ("old-names-for-the-checks", 'everySeconds: 300}, timeoutMillis: 60000', 'every_seconds: 300}, timeout_millis: 60000'),
+    ("empty-token-accepted", '  jq -er "$1" <<<"$2" || { echo "the answer has no $1: $2" >&2; return 1; }', '  jq -r "$1" <<<"$2"'),
+    ("null-ca-encoded", "'(.caCertificatePem // empty) | @base64'", "'.caCertificatePem | @base64'"),
     ("init-log-not-read",
      '''      kubectl --namespace "${agent_ns}" logs "${pod}" --container register | grep "already registered" \\
         || { echo "${pod} did not find its identity" >&2; return 1; }
