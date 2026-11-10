@@ -13,7 +13,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from harness import CI_INSTALL, CHART, PROBE_CHART, ROOT, check, section
+from harness import CI_INSTALL, CHART, PROBE_CHART, RELEASE_WORKFLOW, ROOT, check, section
 
 SHIM = """#!/usr/bin/env bash
 echo "$(basename "$0") $*" >> "$CALLS"
@@ -324,7 +324,7 @@ def ci_values_agree() -> None:
 def workflow_step(name: str) -> str:
     """The `run:` script of a step of release.yaml, exactly as GitHub Actions would run it."""
     out = subprocess.run(
-        ["yq", f'.jobs.release.steps[] | select(.name == "{name}") | .run', str(ROOT / ".github" / "workflows" / "release.yaml")],
+        ["yq", f'.jobs.release.steps[] | select(.name == "{name}") | .run', str(RELEASE_WORKFLOW)],
         capture_output=True,
         text=True,
         check=True,
@@ -464,6 +464,56 @@ exit 0
         )
 
 
+def landing_page() -> None:
+    section("release workflow · the page at the root of the domain")
+    paths = subprocess.run(["yq", ".on.push.paths[]", str(RELEASE_WORKFLOW)], capture_output=True, text=True, check=True).stdout.split()
+    check("pages/**" in paths, "a change to the page starts the workflow", str(paths))
+    script = workflow_step("Publish the landing page")
+    for detached in (False, True):
+        label = "detached HEAD" if detached else "on a branch"
+        with tempfile.TemporaryDirectory() as raw:
+            tmp = Path(raw)
+            remote, work = checkout_like_actions(tmp, detached)
+            run_step(workflow_step("Make sure the gh-pages branch exists"), work, {"PAGES_DOMAIN": "charts.example.com"})
+            # The chart releaser has added its index since.
+            pages = tmp / "pages-seed"
+            subprocess.run(["git", "clone", "-q", "--branch", "gh-pages", str(remote), str(pages)], check=True)
+            (pages / "index.yaml").write_text("apiVersion: v1\nentries: {}\n")
+            git(pages, "add", "index.yaml")
+            git(pages, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "Update index.yaml")
+            git(pages, "push", "-q", "origin", "gh-pages")
+            before_head = git(work, "rev-parse", "HEAD")
+
+            (work / "pages").mkdir()
+            (work / "pages" / "index.html").write_text("<h1>first</h1>\n")
+            proc = run_step(script, work, {})
+            check(proc.returncode == 0, f"{label}: the step succeeds", (proc.stdout + proc.stderr)[-400:])
+            files = sorted(git(remote, "ls-tree", "--name-only", "gh-pages").split())
+            check(files == [".nojekyll", "CNAME", "README.md", "index.html", "index.yaml"], f"{label}: gh-pages gets the page and keeps the index, the CNAME and .nojekyll", str(files))
+            check(git(remote, "show", "gh-pages:index.html", check_=False) == "<h1>first</h1>", f"{label}: the page is the one from main")
+            commits = git(remote, "rev-list", "--count", "gh-pages")
+            again = run_step(script, work, {})
+            check(
+                again.returncode == 0 and "up to date" in again.stdout and git(remote, "rev-list", "--count", "gh-pages") == commits,
+                f"{label}: an unchanged page adds no commit",
+                (again.stdout + again.stderr)[-300:],
+            )
+            (work / "pages" / "index.html").write_text("<h1>second</h1>\n")
+            third = run_step(script, work, {})
+            check(third.returncode == 0 and git(remote, "show", "gh-pages:index.html", check_=False) == "<h1>second</h1>", f"{label}: a changed page replaces the old one")
+            check(git(work, "rev-parse", "HEAD") == before_head, f"{label}: the workspace stays on the commit it started from")
+            check(len(git(work, "worktree", "list").splitlines()) == 1, f"{label}: no worktree is left behind")
+
+
+def landing_page_content() -> None:
+    section("landing page · what the root of the domain says")
+    html = (ROOT / "pages" / "index.html").read_text()
+    check("helm repo add molesignal https://charts.molesignal.com" in html, "it shows how to add the repository")
+    check('href="index.yaml"' in html, "it links the index Helm reads")
+    for chart in sorted(p.parent.name for p in (ROOT / "charts").glob("*/Chart.yaml")):
+        check(f'molesignal-helm/tree/main/charts/{chart}">{chart}</a>' in html, f"it lists the {chart} chart, linked to its README")
+
+
 def release_each_chart() -> None:
     section("release workflow · every chart in charts/ is released under its own name")
     charts = sorted(p.parent.name for p in (ROOT / "charts").glob("*/Chart.yaml"))
@@ -472,7 +522,7 @@ def release_each_chart() -> None:
     check(config == "{{ .Name }}-{{ .Version }}", "releases are named after the chart and its version, so versions of two charts cannot collide", config)
     chart_dirs = subprocess.run(["yq", '.["chart-dirs"][0]', str(ROOT / "ct.yaml")], capture_output=True, text=True, check=True).stdout.strip()
     check(chart_dirs == "charts", "chart-testing looks at every chart")
-    workflow = (ROOT / ".github" / "workflows" / "release.yaml").read_text()
+    workflow = RELEASE_WORKFLOW.read_text()
     check('for chart in charts/*/; do' in workflow and "helm/chart-releaser-action" in workflow and "skip_existing: true" in workflow, "the workflow covers every chart, and skips a version that exists")
     versions = {name: subprocess.run(["yq", ".version", str(ROOT / "charts" / name / "Chart.yaml")], capture_output=True, text=True, check=True).stdout.strip() for name in charts}
     changelog = (ROOT / "CHANGELOG.md").read_text()
@@ -480,4 +530,4 @@ def release_each_chart() -> None:
         check(f"## [{name} {version}]" in changelog, f"the changelog has an entry for {name} {version}")
 
 
-SCENARIOS = [ci_install, ci_install_probe_agent, ci_values_agree, pages_branch, ghcr_step, release_each_chart]
+SCENARIOS = [ci_install, ci_install_probe_agent, ci_values_agree, pages_branch, landing_page, landing_page_content, ghcr_step, release_each_chart]

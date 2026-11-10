@@ -65,6 +65,7 @@ examples/              values files for common setups (examples/probe-agent/ for
 docs/                  versioning, publishing, how the chart is put together
 tests/                 offline render tests and mutation tests (Python, no cluster needed)
 scripts/               generator for the values tables of the chart READMEs, and the install on kind
+pages/                 the page at the root of charts.molesignal.com
 .github/workflows/     lint + test on every change, release on every new chart version
 ```
 

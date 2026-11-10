@@ -18,11 +18,12 @@ from contextlib import contextmanager
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-# These point the whole suite at another copy of a chart or of the install script; mutate.py
-# uses them to check that the tests fail when one of those is broken.
+# These point the whole suite at another copy of a chart, of the install script or of the release
+# workflow; mutate.py uses them to check that the tests fail when one of those is broken.
 CHART = Path(os.environ.get("MOLESIGNAL_CHART") or ROOT / "charts" / "molesignal").resolve()
 PROBE_CHART = Path(os.environ.get("PROBE_AGENT_CHART") or ROOT / "charts" / "probe-agent").resolve()
 CI_INSTALL = Path(os.environ.get("CI_INSTALL_SCRIPT") or ROOT / "scripts" / "ci-install.sh").resolve()
+RELEASE_WORKFLOW = Path(os.environ.get("RELEASE_WORKFLOW") or ROOT / ".github" / "workflows" / "release.yaml").resolve()
 ENV = {**os.environ, "KUBECONFIG": os.devnull}
 
 DNS_LABEL = re.compile(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$")
