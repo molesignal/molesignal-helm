@@ -264,6 +264,13 @@ SCRIPT_MUTATIONS = [
     ("bearer-always-sent", '[[ -z "${session_token}" ]] || args+=(--header "Authorization: Bearer ${session_token}")', 'args+=(--header "Authorization: Bearer ${session_token}")'),
 ]
 
+# The same for .github/workflows/release.yaml: name, exact text, replacement. The scripts module covers them.
+WORKFLOW_MUTATIONS = [
+    ("landing-page-not-copied", '          cp pages/index.html "${pages}/index.html"\n', ""),
+    ("landing-page-committed-every-run", 'if [ -z "$(git -C "${pages}" status --porcelain)" ]; then', "if false; then"),
+    ("landing-page-change-not-released", "      - pages/**\n", ""),
+]
+
 
 def run_tests(module: str, env_var: str, target: Path) -> list[str]:
     proc = subprocess.run(
@@ -298,18 +305,18 @@ def mutate_chart(chart: str, env_var: str, mutation: tuple[str, str, str, str, s
     return False
 
 
-def mutate_script(mutation: tuple[str, str, str]) -> bool:
+def mutate_script(mutation: tuple[str, str, str], source: Path = ROOT / "scripts" / "ci-install.sh", env_var: str = "CI_INSTALL_SCRIPT") -> bool:
     name, old, new = mutation
     tmp = Path(tempfile.mkdtemp(prefix="mutant-"))
     try:
-        target = tmp / "ci-install.sh"
-        text = (ROOT / "scripts" / "ci-install.sh").read_text()
+        target = tmp / source.name
+        text = source.read_text()
         if text.count(old) != 1:
-            print(f"?? {name}: pattern found {text.count(old)} times in the script; update the mutation")
+            print(f"?? {name}: pattern found {text.count(old)} times in {source.name}; update the mutation")
             return False
         target.write_text(text.replace(old, new))
         target.chmod(0o755)
-        failed = run_tests("scripts", "CI_INSTALL_SCRIPT", target)
+        failed = run_tests("scripts", env_var, target)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     if failed:
@@ -338,6 +345,10 @@ def main() -> int:
     for mutation in filter(wanted, SCRIPT_MUTATIONS):
         ran += 1
         if not mutate_script(mutation):
+            survivors.append(mutation[0])
+    for mutation in filter(wanted, WORKFLOW_MUTATIONS):
+        ran += 1
+        if not mutate_script(mutation, ROOT / ".github" / "workflows" / "release.yaml", "RELEASE_WORKFLOW"):
             survivors.append(mutation[0])
     print(f"\n{ran - len(survivors)} of {ran} mutations caught")
     return 1 if survivors else 0

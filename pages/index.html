@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MoleSignal Helm charts</title>
+<meta name="description" content="Helm charts for MoleSignal, self-hosted, OpenTelemetry-native observability.">
+<link rel="icon" href="https://www.molesignal.com/icon-512.png">
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #ffffff;
+    --fg: #111418;
+    --muted: #5b6370;
+    --line: #e4e7eb;
+    --code: #f4f5f7;
+    --link: #0064c8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1115;
+      --fg: #e6e8eb;
+      --muted: #9aa3ae;
+      --line: #262b33;
+      --code: #181b21;
+      --link: #5ea8ff;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font: 15px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 760px; margin: 0 auto; padding: 56px 16px 72px; }
+  h1 { margin: 0 0 8px; font-size: 26px; line-height: 1.25; font-weight: 600; }
+  h2 { margin: 36px 0 10px; font-size: 16px; font-weight: 600; }
+  p { margin: 0 0 12px; }
+  .lede { color: var(--muted); }
+  a { color: var(--link); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  pre { margin: 0 0 12px; padding: 12px 14px; background: var(--code); border-radius: 8px; overflow-x: auto; }
+  code { font: 13px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  p code { padding: 1px 5px; background: var(--code); border-radius: 4px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { padding: 10px 8px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-size: 13px; font-weight: 600; }
+  td:first-child { white-space: nowrap; }
+  footer { margin-top: 40px; color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>MoleSignal Helm charts</h1>
+  <p class="lede">Helm charts for <a href="https://www.molesignal.com">MoleSignal</a>, self-hosted, OpenTelemetry-native observability.</p>
+
+  <h2>Add the repository</h2>
+<pre><code>helm repo add molesignal https://charts.molesignal.com
+helm repo update</code></pre>
+
+  <h2>Charts</h2>
+  <table>
+    <thead>
+      <tr><th>Chart</th><th>Deploys</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><a href="https://github.com/molesignal/molesignal-helm/tree/main/charts/molesignal">molesignal</a></td>
+        <td>MoleSignal itself, as one pod or as separate router, intake, querier, compactor and alert workloads, with an optional bundled PostgreSQL and RustFS for evaluation.</td>
+      </tr>
+      <tr>
+        <td><a href="https://github.com/molesignal/molesignal-helm/tree/main/charts/probe-agent">probe-agent</a></td>
+        <td>Probe Agents, which run synthetic checks from a private location and connect to a MoleSignal server, in the same cluster or elsewhere.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Try it out</h2>
+  <p>One MoleSignal pod plus a bundled PostgreSQL and RustFS:</p>
+<pre><code>helm install molesignal molesignal/molesignal --namespace molesignal --create-namespace
+kubectl --namespace molesignal port-forward svc/molesignal 5080:5080</code></pre>
+  <p>Then open <code>http://127.0.0.1:5080</code>. For production, follow the <a href="https://docs.molesignal.com/en-US/deployment">deployment guide</a>.</p>
+
+  <h2>Other addresses</h2>
+  <p>The same charts are published as OCI artifacts at <code>oci://ghcr.io/molesignal/charts/&lt;chart&gt;</code>. Helm reads this repository through <a href="index.yaml">index.yaml</a>.</p>
+
+  <footer>
+    <a href="https://github.com/molesignal/molesignal-helm">Source</a> ·
+    <a href="https://github.com/molesignal/molesignal-helm/blob/main/CHANGELOG.md">Changelog</a> ·
+    Apache License 2.0
+  </footer>
+</main>
+</body>
+</html>

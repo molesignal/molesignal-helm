@@ -8,6 +8,8 @@
 #
 # A version is published once and never rewritten: bump `version` in Chart.yaml to
 # release. See docs/publishing.md for the one-time repository setup.
+#
+# The page at the root of the domain is pages/index.html, copied to gh-pages on every run.
 name: Release
 
 on:
@@ -16,6 +18,7 @@ on:
     paths:
       - charts/**
       - cr.yaml
+      - pages/**
       - .github/workflows/release.yaml
   workflow_dispatch:
 
@@ -82,6 +85,23 @@ jobs:
           skip_existing: true
         env:
           CR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # gh-pages serves its files as they are (.nojekyll), so without this page the root of the
+      # domain is a 404. Helm itself only reads index.yaml.
+      - name: Publish the landing page
+        run: |
+          git fetch --quiet origin "+refs/heads/gh-pages:refs/remotes/origin/gh-pages"
+          pages="$(mktemp -d)"
+          git worktree add --quiet --detach "${pages}" origin/gh-pages
+          cp pages/index.html "${pages}/index.html"
+          if [ -z "$(git -C "${pages}" status --porcelain)" ]; then
+            echo "the landing page on gh-pages is up to date"
+          else
+            git -C "${pages}" add index.html
+            git -C "${pages}" commit --quiet -m "Update the landing page"
+            git -C "${pages}" push --quiet origin HEAD:gh-pages
+          fi
+          git worktree remove --force "${pages}"
 
       - name: Install yq
         run: |

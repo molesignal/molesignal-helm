@@ -110,6 +110,13 @@ not needed for the chart to work.
 The chart archives themselves stay on the GitHub releases (`index.yaml` points at them), so
 downloads keep working whatever happens to the domain. Only the address people type depends on it.
 
+## The landing page
+
+Helm only reads `index.yaml`, but people also open the domain in a browser. `pages/index.html` is the
+page they get. The release workflow copies it to the root of `gh-pages` every time it runs, and a
+change to the page starts the workflow by itself. Without the page the root of the domain is a 404:
+`gh-pages` carries `.nojekyll`, so GitHub Pages does not render its README.
+
 ## The website
 
 The website's quick start shows the Helm install command (`lib/commands.ts` in the website
