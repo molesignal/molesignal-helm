@@ -90,11 +90,15 @@ if path.endswith("/register-tokens"):
     require("ttlMinutes")
     if fail == "old-names":
         answer({"register_token": "one-time-secret", "ca_certificate_pem": CA})
+    if fail == "no-ca":
+        answer({"registerToken": "one-time-secret"})
     answer({"registerToken": "one-time-secret", "caCertificatePem": CA})
 if path == "/synthetics/agent-tokens":
     require("name", "locationId", "expiresInDays")
     if fail == "old-names":
         answer({"agent_token": "ms_probe_agent-secret", "ca_certificate_pem": CA})
+    if fail == "no-ca":
+        answer({"agentToken": "ms_probe_agent-secret"})
     answer({"agentToken": "ms_probe_agent-secret", "caCertificatePem": CA})
 if path.endswith("/agents"):
     kind = path.split("/")[3].removeprefix("location-")
@@ -314,6 +318,7 @@ def ci_install_probe_agent() -> None:
         ("signin", "cannot sign in"),
         ("location", "the server refuses the location"),
         ("old-names", "the answer has the field names of an older API"),
+        ("no-ca", "the answer has a token but no CA"),
         ("agent-install", "an Agent does not install"),
         ("offline", "Agents never come online"),
         ("shared-identity", "two replicas share an identity"),
@@ -336,6 +341,9 @@ def ci_install_probe_agent() -> None:
         if fail == "old-names":
             check("the answer has no .agentToken" in output, "and says which field it did not find, instead of installing with an empty token", output[-300:])
             check(not any(c.startswith("helm install ") and c.split()[3] == "charts/probe-agent" for c in calls), "and installs no Agent without a token and a CA")
+        if fail == "no-ca":
+            check("the answer has no (.caCertificatePem" in output, "and says the CA is missing, instead of passing on the base64 of null", output[-300:])
+            check(not any(c.startswith("helm install ") and c.split()[3] == "charts/probe-agent" for c in calls), "and installs no Agent without a CA")
 
     status, calls, _ = run_script("browser-check", ("probe-agent",))
     check(
