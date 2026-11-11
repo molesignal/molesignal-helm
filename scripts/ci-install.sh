@@ -9,7 +9,8 @@
 #
 # molesignal   once per values file in charts/molesignal/ci, followed by `helm test`.
 # probe-agent  an Agent needs a server, so this installs the molesignal chart first and signs in to
-#              it. Then, once per values file in charts/probe-agent/ci: a location and a token of
+#              its API, whose JSON is camelCase from application 26.3 on. Then, once per values file
+#              in charts/probe-agent/ci: a location and a token of
 #              the kind the file is named after, `helm install`, `helm test`, every replica online,
 #              a real HTTP and a real browser check through the Agents, and a deleted pod that comes
 #              back as the same Agent.
@@ -105,6 +106,12 @@ api() {
   fi
 }
 
+# required FILTER JSON: prints what the filter finds, and fails, saying what was missing, when it
+# finds nothing. An answer without the field usually means the API changed its names.
+required() {
+  jq -er "$1" <<<"$2" || { echo "the answer has no $1: $2" >&2; return 1; }
+}
+
 # Up to and including application 26.2.0.0 signing in answers with a token for the Authorization
 # header. Later versions set a session cookie instead, which the jar in `api` keeps.
 sign_in() {
@@ -156,8 +163,8 @@ wait_for_agents() {
 run_check() {
   local name="$1" location="$2" spec="$3" created monitor revision results outcome attempt
   created="$(api POST /synthetics/monitors "$(jq -n --arg name "${name}" --arg location "${location}" --argjson spec "${spec}" \
-    '{name: $name, spec: $spec, schedule: {kind: "interval", every_seconds: 300}, timeout_millis: 60000,
-      location_policy: {kind: "any"}, location_ids: [$location], team_id: null, escalation_policy_id: null}')")" || return 1
+    '{name: $name, spec: $spec, schedule: {kind: "interval", everySeconds: 300}, timeoutMillis: 60000,
+      locationPolicy: {kind: "any"}, locationIds: [$location], teamId: null, escalationPolicyId: null}')")" || return 1
   monitor="$(jq -r .monitor.id <<<"${created}")"
   revision="$(jq -r .revision.id <<<"${created}")"
   api POST "/synthetics/monitors/${monitor}/revisions/${revision}/test" >/dev/null || return 1
@@ -166,7 +173,7 @@ run_check() {
     results="$(api GET "/synthetics/monitors/${monitor}/results?limit=5")" || return 1
     if jq -e 'length > 0' <<<"${results}" >/dev/null; then
       outcome="$(jq -r '.[0].outcome' <<<"${results}")"
-      echo "check ${name}: ${outcome} on Agent $(jq -r '.[0].agent_id' <<<"${results}")"
+      echo "check ${name}: ${outcome} on Agent $(jq -r '.[0].agentId' <<<"${results}")"
       [[ "${outcome}" == "healthy" ]] && return 0
       echo "${results}" >&2
       return 1
@@ -181,12 +188,12 @@ run_check() {
 run_checks() {
   local kind="$1" location="$2" url="http://${server}.${agent_ns}.svc.cluster.local:5080"
   run_check "${kind}-http" "${location}" "$(jq -n --arg url "${url}/api/v1/healthz" \
-    '{kind: "http", configuration: {follow_redirects: true, max_redirects: 3, verify_tls: true,
+    '{kind: "http", configuration: {followRedirects: true, maxRedirects: 3, verifyTls: true,
       steps: [{id: "health", name: "health", method: "GET", url: {source: "literal", value: $url}, body: null}]}}')" || return 1
   run_check "${kind}-browser" "${location}" "$(jq -n --arg url "${url}/" \
-    '{kind: "browser", configuration: {viewport: {width: 1280, height: 720}, user_agent: null,
-      capture_screenshot_on_failure: false, capture_har_on_failure: false,
-      steps: [{id: "open", name: "open", action: {action: "navigate", url: {source: "literal", value: $url}, wait_until: "load"}}]}}')"
+    '{kind: "browser", configuration: {viewport: {width: 1280, height: 720}, userAgent: null,
+      captureScreenshotOnFailure: false, captureHarOnFailure: false,
+      steps: [{id: "open", name: "open", action: {action: "navigate", url: {source: "literal", value: $url}, waitUntil: "load"}}]}}')"
 }
 
 # same_agent_after_restart FULLNAME LOCATION AGENTS SECRET: a pod that is deleted comes back with its
@@ -197,13 +204,13 @@ same_agent_after_restart() {
   kubectl --namespace "${agent_ns}" delete secret "${secret}" || return 1
   kubectl --namespace "${agent_ns}" delete pod "${pod}" --wait=true --timeout=2m || return 1
   agents="$(api GET "/synthetics/locations/${location}/agents")" || return 1
-  stopped="$(jq -r --arg pod "${pod}" '.[] | select(.hostname == $pod) | .last_heartbeat_at' <<<"${agents}")"
+  stopped="$(jq -r --arg pod "${pod}" '.[] | select(.hostname == $pod) | .lastHeartbeatAt' <<<"${agents}")"
   kubectl --namespace "${agent_ns}" rollout status "statefulset/${full}" --timeout=5m || return 1
 
   for ((attempt = 0; attempt < poll_attempts; attempt++)); do
     agents="$(api GET "/synthetics/locations/${location}/agents")" || return 1
     if jq -e --arg pod "${pod}" --argjson stopped "${stopped}" \
-      'any(.[]; .hostname == $pod and .status == "online" and .last_heartbeat_at > $stopped)' <<<"${agents}" >/dev/null; then
+      'any(.[]; .hostname == $pod and .status == "online" and .lastHeartbeatAt > $stopped)' <<<"${agents}" >/dev/null; then
       if [[ "$(jq -c '[.[].id] | sort' <<<"${agents}")" != "$(jq -c '[.[].id] | sort' <<<"${before}")" ]]; then
         echo "the Agents changed: ${before} became ${agents}" >&2
         return 1
@@ -228,18 +235,18 @@ probe_agent_scenario() {
   echo "==> ${values}: Agent image tag ${tag}"
 
   answer="$(api POST /synthetics/locations "$(jq -n --arg code "${kind}" \
-    '{name: $code, code: $code, egress_policy: {allow_private_networks: true}}')")" || return 1
-  location="$(jq -r .id <<<"${answer}")"
+    '{name: $code, code: $code, egressPolicy: {allowPrivateNetworks: true}}')")" || return 1
+  location="$(required .id "${answer}")" || return 1
 
   case "${kind}" in
     one-time-token)
-      instructions="$(api POST "/synthetics/locations/${location}/register-tokens" '{"ttl_minutes": 30}')" || return 1
-      token="$(jq -r .register_token <<<"${instructions}")"
+      instructions="$(api POST "/synthetics/locations/${location}/register-tokens" '{"ttlMinutes": 30}')" || return 1
+      token="$(required .registerToken "${instructions}")" || return 1
       ;;
     agent-token)
       instructions="$(api POST /synthetics/agent-tokens "$(jq -n --arg location "${location}" \
-        '{name: "ci", location_id: $location, expires_in_days: 1}')")" || return 1
-      token="$(jq -r .agent_token <<<"${instructions}")"
+        '{name: "ci", locationId: $location, expiresInDays: 1}')")" || return 1
+      token="$(required .agentToken "${instructions}")" || return 1
       ;;
     *)
       echo "no token kind for ${values}" >&2
@@ -247,7 +254,7 @@ probe_agent_scenario() {
       ;;
   esac
   echo "::add-mask::${token}"
-  ca="$(jq -r '.ca_certificate_pem | @base64' <<<"${instructions}")"
+  ca="$(required '(.caCertificatePem // empty) | @base64' "${instructions}")" || return 1
   kubectl --namespace "${agent_ns}" create secret generic "ci-${kind}" --from-literal="token=${token}" || return 1
 
   helm install "${release}" "${probe_agent}" --namespace "${agent_ns}" --values "${values}" \

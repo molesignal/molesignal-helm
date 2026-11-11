@@ -33,8 +33,10 @@ fi
 exit 0
 """
 
-# The server's API, on the far side of curl. The state is the number of the call, which is all a
-# heartbeat needs in order to move, and whether a pod was deleted (the stand-in for kubectl records it).
+# The server's API, on the far side of curl, with the camelCase JSON of application 26.3. Like the
+# real one it answers 422 to a request without the fields it needs, so a request in the old snake_case
+# fails here too. The state is the number of the call, which is all a heartbeat needs in order to
+# move, and whether a pod was deleted (the stand-in for kubectl records it).
 CURL_SHIM = """#!/usr/bin/env python3
 import json, os, sys
 
@@ -61,6 +63,16 @@ def refuse(message):
     print(json.dumps({"error": message}))
     sys.exit(22)
 
+# 422 unless the request body has every dotted path.
+def require(*paths):
+    body = json.loads(data) if data else {}
+    for path in paths:
+        node = body
+        for key in path.split("."):
+            if not isinstance(node, dict) or key not in node:
+                refuse(f"422: missing field `{path}`")
+            node = node[key]
+
 if path == "/healthz":
     answer({"status": "ok"})
 if path == "/auth/signin":
@@ -72,11 +84,22 @@ if fail == "cookies" and not ("--cookie" in args and "--cookie-jar" in args):
 if path == "/synthetics/locations":
     if fail == "location":
         refuse("the location is refused")
+    require("name", "code", "egressPolicy.allowPrivateNetworks")
     answer({"id": "location-" + json.loads(data)["code"]})
 if path.endswith("/register-tokens"):
-    answer({"register_token": "one-time-secret", "ca_certificate_pem": CA})
+    require("ttlMinutes")
+    if fail == "old-names":
+        answer({"register_token": "one-time-secret", "ca_certificate_pem": CA})
+    if fail == "no-ca":
+        answer({"registerToken": "one-time-secret"})
+    answer({"registerToken": "one-time-secret", "caCertificatePem": CA})
 if path == "/synthetics/agent-tokens":
-    answer({"agent_token": "ms_probe_agent-secret", "ca_certificate_pem": CA})
+    require("name", "locationId", "expiresInDays")
+    if fail == "old-names":
+        answer({"agent_token": "ms_probe_agent-secret", "ca_certificate_pem": CA})
+    if fail == "no-ca":
+        answer({"agentToken": "ms_probe_agent-secret"})
+    answer({"agentToken": "ms_probe_agent-secret", "caCertificatePem": CA})
 if path.endswith("/agents"):
     kind = path.split("/")[3].removeprefix("location-")
     count = 2 if kind == "agent-token" else 1
@@ -90,7 +113,7 @@ if path.endswith("/agents"):
             "hostname": f"{kind}-probe-agent-{i}",
             "status": status,
             "capabilities": ["http", "browser"],
-            "last_heartbeat_at": 1000 + (len(calls) if fail != "stuck-heartbeat" else 0),
+            "lastHeartbeatAt": 1000 + (len(calls) if fail != "stuck-heartbeat" else 0),
         }
         for i in range(count)
     ]
@@ -99,6 +122,12 @@ if path.endswith("/agents"):
             agent["id"] = "same"
     answer(agents)
 if path == "/synthetics/monitors":
+    require("name", "spec.kind", "spec.configuration.steps", "schedule.everySeconds", "timeoutMillis", "locationPolicy.kind", "locationIds")
+    configuration = json.loads(data)["spec"]["configuration"]
+    if json.loads(data)["spec"]["kind"] == "browser" and not {"viewport", "userAgent", "captureScreenshotOnFailure", "captureHarOnFailure"} <= set(configuration):
+        refuse("422: a browser check without its camelCase settings")
+    if json.loads(data)["spec"]["kind"] == "http" and not {"followRedirects", "maxRedirects", "verifyTls"} <= set(configuration):
+        refuse("422: an HTTP check without its camelCase settings")
     name = json.loads(data)["name"]
     if sum(f'"name":"{name}"' in c for c in calls if c.startswith("api POST /synthetics/monitors ")) > 1:
         print(json.dumps({"error": "conflict", "message": "uq_synthetic_monitors_org_name_active"}))
@@ -108,7 +137,7 @@ if path.endswith("/test"):
     answer([])
 if "/results" in path:
     bad = fail == "browser-check" and path.split("?")[0].split("/")[3].endswith("-browser")
-    answer([{"outcome": "failing" if bad else "healthy", "agent_id": "agent-1"}])
+    answer([{"outcome": "failing" if bad else "healthy", "agentId": "agent-1"}])
 refuse("no such route: " + path)
 """
 
@@ -186,6 +215,27 @@ def ci_install() -> None:
         check(dump_at < uninstall_at, "the evidence is collected before the release is removed")
 
 
+def json_keys(call: str) -> list[str]:
+    """Every key of the JSON body of a logged API call."""
+    body = call.split(" ", 3)[3].split(" Authorization")[0] if call.count(" ") >= 3 else ""
+    keys: list[str] = []
+
+    def walk(node: object) -> None:
+        if isinstance(node, dict):
+            for key, value in node.items():
+                keys.append(key)
+                walk(value)
+        elif isinstance(node, list):
+            for value in node:
+                walk(value)
+
+    try:
+        walk(json.loads(body))
+    except ValueError:
+        pass
+    return keys
+
+
 def ci_install_probe_agent() -> None:
     section("scripts · ci-install.sh for probe-agent: a server, a token, Agents that come online and stay themselves")
     files = sorted(p.name for p in (PROBE_CHART / "ci").glob("*-values.yaml"))
@@ -241,13 +291,17 @@ def ci_install_probe_agent() -> None:
     prefix = "api POST /synthetics/monitors "
     monitors = [json.loads(c[len(prefix):].split(" Authorization")[0]) for c in calls if c.startswith(prefix)]
     check(sorted(m["spec"]["kind"] for m in monitors) == sorted(["http", "browser"] * len(kinds)), "runs an HTTP and a browser check per values file", str(monitors))
-    check(all(m["location_ids"] and m["spec"]["configuration"]["steps"] for m in monitors), "each in the location of its Agents")
+    check(all(m["locationIds"] and m["spec"]["configuration"]["steps"] for m in monitors), "each in the location of its Agents")
     check(len({m["name"] for m in monitors}) == len(monitors), "each under a name of its own, since a server refuses a second check with the same name")
     check(
         all("ci-molesignal.ci-probe-agent.svc.cluster.local:5080" in json.dumps(m["spec"]) for m in monitors),
         "against the server, inside the cluster",
     )
-    check(any(c.startswith("api POST /synthetics/locations ") and '"allow_private_networks":true' in c for c in calls), "from a location that may reach private addresses")
+    check(any(c.startswith("api POST /synthetics/locations ") and '"allowPrivateNetworks":true' in c for c in calls), "from a location that may reach private addresses")
+    check(
+        not any("_" in key for c in calls if c.startswith("api POST /synthetics/") for key in json_keys(c)),
+        "every request is in the camelCase JSON of application 26.3 and later",
+    )
     check(not any(" describe " in c for c in calls if c.startswith("kubectl")), "dumps nothing when all is well")
     check(
         all(f"helm uninstall {name} --namespace ci-probe-agent --wait --timeout 5m" in calls for name in [*kinds, "ci"])
@@ -263,6 +317,8 @@ def ci_install_probe_agent() -> None:
     for fail, what in (
         ("signin", "cannot sign in"),
         ("location", "the server refuses the location"),
+        ("old-names", "the answer has the field names of an older API"),
+        ("no-ca", "the answer has a token but no CA"),
         ("agent-install", "an Agent does not install"),
         ("offline", "Agents never come online"),
         ("shared-identity", "two replicas share an identity"),
@@ -282,6 +338,12 @@ def ci_install_probe_agent() -> None:
             check("online Agents in the location, got" in output, "and says which Agents it found, at the step that waits for them", output[-300:])
         if fail == "location":
             check("the location is refused" in output, "and prints what the server answered", output[-300:])
+        if fail == "old-names":
+            check("the answer has no .agentToken" in output, "and says which field it did not find, instead of installing with an empty token", output[-300:])
+            check(not any(c.startswith("helm install ") and c.split()[3] == "charts/probe-agent" for c in calls), "and installs no Agent without a token and a CA")
+        if fail == "no-ca":
+            check("the answer has no (.caCertificatePem" in output, "and says the CA is missing, instead of passing on the base64 of null", output[-300:])
+            check(not any(c.startswith("helm install ") and c.split()[3] == "charts/probe-agent" for c in calls), "and installs no Agent without a CA")
 
     status, calls, _ = run_script("browser-check", ("probe-agent",))
     check(
