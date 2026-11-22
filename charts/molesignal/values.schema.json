@@ -310,8 +310,6 @@
     "standalone": {
       "allOf": [{ "$ref": "#/$defs/role" }],
       "properties": {
-        "persistence": { "$ref": "#/$defs/persistence" },
-        "persistentVolumeClaimRetentionPolicy": { "type": "object" },
         "service": { "$ref": "#/$defs/service" }
       }
     },
@@ -326,9 +324,6 @@
     "intake": {
       "allOf": [{ "$ref": "#/$defs/role" }],
       "properties": {
-        "podManagementPolicy": { "enum": ["OrderedReady", "Parallel"] },
-        "persistence": { "$ref": "#/$defs/persistence" },
-        "persistentVolumeClaimRetentionPolicy": { "type": "object" },
         "podDisruptionBudget": { "$ref": "#/$defs/podDisruptionBudget" }
       }
     },

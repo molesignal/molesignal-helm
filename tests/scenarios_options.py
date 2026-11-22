@@ -44,7 +44,7 @@ def scheduling() -> None:
     check(m.returncode == 0, "renders", m.stderr)
     integrity(m, "scheduling")
 
-    for kind, role in (("Deployment", "router"), ("StatefulSet", "intake"), ("Deployment", "alert")):
+    for kind, role in (("Deployment", "router"), ("Deployment", "intake"), ("Deployment", "alert")):
         doc = m.get(kind, f"{FULL}-{role}")
         spec = pod_spec(doc)
         check(spec["nodeSelector"] == {"disk": "ssd"}, f"{role}: global nodeSelector")
@@ -77,7 +77,7 @@ def scheduling() -> None:
         "ONLY_QUERIER" not in env_of(container(m.get("Deployment", f"{FULL}-router"), "molesignal")),
         "router: does not get the querier's env",
     )
-    intake = container(m.get("StatefulSet", f"{FULL}-intake"), "molesignal")
+    intake = container(m.get("Deployment", f"{FULL}-intake"), "molesignal")
     check(intake["resources"] == {"requests": {"memory": "2Gi"}}, "intake: resources")
 
     bundled = render({**values, "mode": "standalone"})
@@ -105,7 +105,7 @@ def probes() -> None:
     check(r["livenessProbe"]["httpGet"]["port"] == "http", "a liveness probe can be added")
     q = container(m.get("Deployment", f"{FULL}-querier"), "molesignal")
     check(q["readinessProbe"] == {"tcpSocket": {"port": "http"}}, "naming another handler replaces the probe instead of mixing handlers")
-    i = container(m.get("StatefulSet", f"{FULL}-intake"), "molesignal")
+    i = container(m.get("Deployment", f"{FULL}-intake"), "molesignal")
     check(i["startupProbe"]["failureThreshold"] == 60, "a startup probe can be added")
 
 
@@ -199,16 +199,16 @@ def web_layer() -> None:
 def naming() -> None:
     section("options · names")
     m = render(release="molesignal")
-    check(m.has("StatefulSet", "molesignal") and m.has("Service", "molesignal-postgresql"), "a release named like the chart is not doubled")
+    check(m.has("Deployment", "molesignal") and m.has("Service", "molesignal-postgresql"), "a release named like the chart is not doubled")
     m = render(release="a-very-long-release-name-that-goes-on-and-on-and-on", sets=["mode=distributed"])
     integrity(m, "long release name")
     check(max(len(d["metadata"]["name"]) for d in m.docs) <= 63, "every name fits in 63 characters")
     m = render(sets=["fullnameOverride=obs", "nameOverride=ignored"])
-    check(m.has("StatefulSet", "obs") and m.has("Service", "obs-rustfs"), "fullnameOverride is the prefix")
-    labels = m.get("StatefulSet", "obs")["metadata"]["labels"]
+    check(m.has("Deployment", "obs") and m.has("Service", "obs-rustfs"), "fullnameOverride is the prefix")
+    labels = m.get("Deployment", "obs")["metadata"]["labels"]
     check(labels["app.kubernetes.io/name"] == "ignored", "nameOverride changes the name label")
     m = render(sets=["commonLabels.env=prod", "commonAnnotations.owner=sre"])
-    app = m.get("StatefulSet", FULL)
+    app = m.get("Deployment", FULL)
     check(
         app["metadata"]["labels"]["env"] == "prod" and app["metadata"]["annotations"]["owner"] == "sre"
         and m.get("Service", FULL)["metadata"]["labels"]["env"] == "prod"
@@ -252,15 +252,15 @@ def registry_and_pull_secrets() -> None:
     check(all(pod_spec(w).get("imagePullSecrets") for w in m.workloads()), "every workload gets them")
     digest = "sha256:" + "a" * 64
     pinned = render(sets=[f"image.digest={digest}"])
-    check(container(pinned.get("StatefulSet", FULL), "molesignal")["image"] == f"ghcr.io/molesignal/molesignal:latest@{digest}", "a digest is appended to the tag")
+    check(container(pinned.get("Deployment", FULL), "molesignal")["image"] == f"ghcr.io/molesignal/molesignal:latest@{digest}", "a digest is appended to the tag")
     custom = render(sets=["image.tag=26.2.0.0", "image.repository=registry.local/ms"])
-    check(container(custom.get("StatefulSet", FULL), "molesignal")["image"] == "registry.local/ms:26.2.0.0", "repository and tag can be set")
+    check(container(custom.get("Deployment", FULL), "molesignal")["image"] == "registry.local/ms:26.2.0.0", "repository and tag can be set")
 
 
 def extras() -> None:
     section("options · service account, services and extra objects")
     m = render({"serviceAccount": {"create": False, "name": "mine"}})
-    check(not m.of("ServiceAccount") and pod_spec(m.get("StatefulSet", FULL))["serviceAccountName"] == "mine", "use an existing service account")
+    check(not m.of("ServiceAccount") and pod_spec(m.get("Deployment", FULL))["serviceAccountName"] == "mine", "use an existing service account")
     m = render({"serviceAccount": {"annotations": {"eks.amazonaws.com/role-arn": "arn:aws:iam::1:role/x"}, "automount": True}})
     sa = m.get("ServiceAccount", FULL)
     check(sa["metadata"]["annotations"]["eks.amazonaws.com/role-arn"].startswith("arn:") and sa["automountServiceAccountToken"] is True, "service account annotations and automount")
@@ -279,31 +279,30 @@ def extras() -> None:
     check(m.returncode == 0 and m.has("NetworkPolicy", "rel-deny"), "extraObjects are templated", m.stderr)
     check(m.get("NetworkPolicy", "rel-deny")["metadata"]["namespace"] == "ns", "and can use the release namespace")
 
-    m = render({"standalone": {"persistence": {"enabled": False}, "persistentVolumeClaimRetentionPolicy": {"whenDeleted": "Delete"}}, "postgresql": {"persistence": {"enabled": False}}, "rustfs": {"persistence": {"enabled": False}}})
+    m = render({"postgresql": {"persistence": {"enabled": False}}, "rustfs": {"persistence": {"enabled": False}}})
     integrity(m, "no persistence")
-    for name in (FULL, f"{FULL}-postgresql", f"{FULL}-rustfs"):
+    for name in (f"{FULL}-postgresql", f"{FULL}-rustfs"):
         sts = m.get("StatefulSet", name)
         check("volumeClaimTemplates" not in sts["spec"] and {"name": "data", "emptyDir": {}} in pod_spec(sts)["volumes"], f"{name}: emptyDir when persistence is off")
-    check(m.get("StatefulSet", FULL)["spec"]["persistentVolumeClaimRetentionPolicy"] == {"whenDeleted": "Delete"}, "PVC retention policy is passed through")
 
-    m = render({"standalone": {"persistence": {"storageClass": "fast", "size": "50Gi", "accessModes": ["ReadWriteOncePod"], "annotations": {"x": "y"}}}, "postgresql": {"persistence": {"storageClass": "-"}}})
-    claim = m.get("StatefulSet", FULL)["spec"]["volumeClaimTemplates"][0]
+    m = render({"postgresql": {"persistence": {"storageClass": "fast", "size": "50Gi", "accessModes": ["ReadWriteOncePod"]}}, "rustfs": {"persistence": {"storageClass": "-"}}})
+    claim = m.get("StatefulSet", f"{FULL}-postgresql")["spec"]["volumeClaimTemplates"][0]
     check(
         claim["spec"]["storageClassName"] == "fast" and claim["spec"]["accessModes"] == ["ReadWriteOncePod"]
-        and claim["spec"]["resources"]["requests"]["storage"] == "50Gi" and claim["metadata"]["annotations"] == {"x": "y"},
-        "claim storage class, size, modes and annotations",
+        and claim["spec"]["resources"]["requests"]["storage"] == "50Gi",
+        "claim storage class, size and modes",
     )
-    check(m.get("StatefulSet", f"{FULL}-postgresql")["spec"]["volumeClaimTemplates"][0]["spec"]["storageClassName"] == "", "'-' disables dynamic provisioning")
+    check(m.get("StatefulSet", f"{FULL}-rustfs")["spec"]["volumeClaimTemplates"][0]["spec"]["storageClassName"] == "", "'-' disables dynamic provisioning")
     m = render({"waitForDependencies": {"enabled": False}})
-    check(not containers(m.get("StatefulSet", FULL), init=True), "the wait init container can be switched off")
+    check(not containers(m.get("Deployment", FULL), init=True), "the wait init container can be switched off")
     m = render({"postgresql": {"extraArgs": ["-c", "shared_buffers=512MB"], "maxConnections": 300}})
     check(container(m.get("StatefulSet", f"{FULL}-postgresql"), "postgresql")["args"] == ["-c", "max_connections=300", "-c", "shared_buffers=512MB"], "PostgreSQL flags")
     m = render({"rustfs": {"console": {"enabled": False}}})
     check([p["port"] for p in m.get("Service", f"{FULL}-rustfs")["spec"]["ports"]] == [9000], "RustFS console can be switched off")
     check(env_of(container(m.get("StatefulSet", f"{FULL}-rustfs"), "rustfs"))["RUSTFS_CONSOLE_ENABLE"]["value"] == "false", "and is disabled in the server")
     m = render({"standalone": {"replicaCount": 1, "terminationGracePeriodSeconds": 120}, "releaseChannel": "stable"})
-    check(pod_spec(m.get("StatefulSet", FULL))["terminationGracePeriodSeconds"] == 120, "grace period is configurable")
-    check(env_of(container(m.get("StatefulSet", FULL), "molesignal"))["RELEASE_CHANNEL"]["value"] == "stable", "release channel is configurable")
+    check(pod_spec(m.get("Deployment", FULL))["terminationGracePeriodSeconds"] == 120, "grace period is configurable")
+    check(env_of(container(m.get("Deployment", FULL), "molesignal"))["RELEASE_CHANNEL"]["value"] == "stable", "release channel is configurable")
 
 
 SCENARIOS = [scheduling, probes, autoscaling_and_budgets, ingress, web_layer, naming, registry_and_pull_secrets, extras]

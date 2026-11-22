@@ -23,6 +23,3 @@ postgresql:
 rustfs:
   persistence:
     size: 1Gi
-standalone:
-  persistence:
-    size: 1Gi

@@ -13,7 +13,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from harness import CI_INSTALL, CHART, PROBE_CHART, RELEASE_WORKFLOW, ROOT, check, section
+from harness import CI_INSTALL, CHART, PROBE_CHART, RELEASE_WORKFLOW, ROOT, check, render, section
 
 SHIM = """#!/usr/bin/env bash
 echo "$(basename "$0") $*" >> "$CALLS"
@@ -362,6 +362,8 @@ def ci_install_probe_agent() -> None:
 def ci_values_agree() -> None:
     section("scripts · the ci/ files of probe-agent and the script describe the same server")
     server = json.loads(subprocess.run(["yq", "-o=json", ".", str(PROBE_CHART / "ci" / "molesignal-server.yaml")], capture_output=True, text=True, check=True).stdout)
+    rendered = render(server, release="ci", namespace="ci-probe-agent")
+    check(rendered.returncode == 0, "the server's values render with the molesignal chart, so the install does not stop at a guard", rendered.stderr)
     host = "ci-molesignal.ci-probe-agent.svc.cluster.local"
     check(server["config"]["probe"]["register_endpoint"] == f"https://{host}:5084", "the server prints its Service's name, in the namespace of the script, as its register endpoint")
     check(server["config"]["probe"]["control_endpoint"] == f"https://{host}:5085", "and as its control endpoint")

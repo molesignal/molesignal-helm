@@ -35,8 +35,8 @@ helm install molesignal oci://ghcr.io/molesignal/charts/molesignal --version 0.2
 ## Requirements
 
 - Kubernetes 1.27 or later and Helm 3.8 or later (3.8 for OCI).
-- A default `StorageClass`, or one named in the values, for the write-ahead log and the
-  bundled services (or switch persistence off for a throw-away install).
+- A default `StorageClass`, or one named in the values, for the bundled PostgreSQL and RustFS
+  (or switch their persistence off for a throw-away install). The MoleSignal pods keep no volume.
 - For production: a PostgreSQL 17 database and an S3-compatible bucket.
 
 ## Images
@@ -62,18 +62,23 @@ settings are those of `deploy/k8s` from that release on. Older images do not sta
 workflow moves `latest` only for stable-channel releases, which is why `releaseChannel` defaults to
 `stable`.
 
+**Chart 0.3.0 needs an application release newer than 26.4.0.0-alpha**, the first that keeps its
+write-ahead log in the object store. The chart gives the MoleSignal pods no volume, so an older
+image would write its log to the container's writable layer and lose what it had not flushed
+whenever a pod restarts. Stay on chart 0.2.0 until that release is out, or pin `image.tag` to it.
+
 ## Choosing a topology
 
 | `mode` | What runs | Use it for |
 | --- | --- | --- |
-| `standalone` (default) | One StatefulSet running every role in a single process, like `docker compose up`. | Trying it out, small installs. Does not scale out. |
-| `distributed` | `router`, `intake` (StatefulSet with a write-ahead log per replica), `querier`, `compactor` and `alert`, each its own workload. | Production. The router and querier scale with an HPA; intake, compactor and alert scale by replicas. |
+| `standalone` (default) | One Deployment running every role in a single process, like `docker compose up`. | Trying it out, small installs. Does not scale out. |
+| `distributed` | `router`, `intake`, `querier`, `compactor` and `alert`, each its own Deployment. | Production. The router and querier scale with an HPA; intake, compactor and alert scale by replicas. |
 
-Changing `mode` on a running install replaces the workloads: the `standalone` StatefulSet goes and
-the distributed ones appear, with their own volumes. The application flushes pending data when it
-is stopped normally (up to `node.drain_timeout_secs`, 30 seconds by default), so stop sending data
-and let the old pod terminate on its own before you switch. Data that was already flushed to the
-object store stays in the database and the bucket, which both topologies share.
+Changing `mode` on a running install replaces the workloads: the `standalone` Deployment goes and
+the distributed ones appear. A write is acknowledged only once its write-ahead log object is in the
+object store, and a pod that stops flushes what it can and hands the rest to the intake pods that
+remain, so nothing acknowledged is lost on the way. Everything lives in the database and the bucket,
+which both topologies share.
 
 All roles run the same image and differ only in `MS_NODE_ROLES`. Nodes find each other through
 PostgreSQL, so there is nothing to wire up between the workloads. The layout mirrors the
@@ -220,8 +225,9 @@ helm upgrade molesignal molesignal/molesignal --namespace molesignal --reuse-val
 
 Prefer `--values your.yaml` to `--reuse-values`: new chart versions add values, and reused
 values hide their defaults. Read the chart's [changelog](https://github.com/molesignal/molesignal-helm/blob/main/CHANGELOG.md)
-and the application's release notes first. A StatefulSet cannot change its volume claim
-template, so resizing a volume means editing the PVC, not the values.
+and the application's release notes first. The bundled PostgreSQL and RustFS are StatefulSets,
+which cannot change their volume claim templates, so resizing their volumes means editing the PVC,
+not the values.
 
 To move to another application version without waiting for a new chart, set `image.tag`. To
 promote a build through the delivery channels (`alpha`, `beta`, `rc`, `stable`) change
@@ -233,8 +239,8 @@ promote a build through the delivery channels (`alpha`, `beta`, `rc`, `stable`) 
 helm uninstall molesignal --namespace molesignal
 ```
 
-removes the workloads and services. It keeps, on purpose, the volumes of the StatefulSets
-(the write-ahead log, and the bundled PostgreSQL and RustFS data) and the generated Secrets. To
+removes the workloads and services. It keeps, on purpose, the volumes of the bundled PostgreSQL
+and RustFS (the bucket holds the write-ahead log too) and the generated Secrets. To
 remove everything, including the data:
 
 ```bash
@@ -251,7 +257,7 @@ kubectl --namespace molesignal delete secret molesignal-secret molesignal-postgr
 | The RustFS pod is `1/2` | The `bucket-init` sidecar has not created the bucket yet: `kubectl logs <pod> -c bucket-init`. |
 | MoleSignal restarts at startup | Every role checks the object store with a write and a read before it serves. `kubectl logs <pod>` names the failing call; check endpoint, bucket, region, `pathStyle` and the keys. |
 | `helm install` fails with `molesignal:` | A guard refused the values; the message says what to change. |
-| Nothing arrives | An intake node starts listening only after it has replayed its write-ahead log, and `/api/v1/readyz` passes once it can take writes. `kubectl get pods` should show it `1/1`. |
+| Nothing arrives | `/api/v1/readyz` passes once an intake pod can take writes; `kubectl get pods` should show it `1/1`. Writes answered `503` mean the pod could not write its write-ahead log to the object store: `kubectl logs <pod>`. |
 
 ## Values
 
@@ -266,7 +272,7 @@ The table is generated from `values.yaml` (`python3 scripts/gen-values-doc.py`).
 | `fullnameOverride` | string | `""` | Override the prefix of every resource name (default: the release name). Kept to 43 characters so that suffixes such as `-postgresql` still fit. |
 | `commonLabels` | object | `{}` | Labels added to every resource. |
 | `commonAnnotations` | object | `{}` | Annotations added to every resource. |
-| `mode` | string | `"standalone"` | Deployment topology. `standalone` runs every role in one StatefulSet (what `docker compose up` does). `distributed` runs router, intake, querier, compactor and alert as separate workloads that scale independently. |
+| `mode` | string | `"standalone"` | Deployment topology. `standalone` runs every role in one Deployment (what `docker compose up` does). `distributed` runs router, intake, querier, compactor and alert as separate workloads that scale independently. |
 | `image.repository` | string | `"ghcr.io/molesignal/molesignal"` | Application image. One image serves every role. |
 | `image.tag` | string | `""` | Image tag. Empty means the chart's `appVersion`, which is `latest`. That tag moves: pin a version (or `digest`) for anything but trying the chart out. |
 | `image.digest` | string | `""` | Image digest (`sha256:...`). When set it is used together with the tag. |
@@ -276,7 +282,7 @@ The table is generated from `values.yaml` (`python3 scripts/gen-values-doc.py`).
 | `logging.level` | string | `"info,tantivy=warn"` | Log filter, in `tracing` env-filter syntax. |
 | `logging.format` | string | `"json"` | Log format: `json` or `text`. |
 | `externalUrl` | string | `""` | Public URL of the UI, for example `https://molesignal.example.com`. Shown in the data-source setup pages and used as the CNAME target for status pages. Empty derives it from the first `ingress.hosts` entry when the ingress is enabled. |
-| `config` | object | `{}` | Extra application settings, merged over the chart's own and written to `config.toml`. Mirrors the TOML layout of the application's `conf/config.toml`: a key `compactor.interval_secs` becomes `[compactor] interval_secs = ...`. Values set here win over the keys the chart derives from its other values (`wal.dir`, `object_store.*`, `telemetry.*`, `http.external_url`, `scheduled_reports.renderer.base_url`). Check names against the `conf/config.toml` of the image you run: some tables refuse an unknown key, which stops the application from starting, and the others ignore it without a word. |
+| `config` | object | `{}` | Extra application settings, merged over the chart's own and written to `config.toml`. Mirrors the TOML layout of the application's `conf/config.toml`: a key `compactor.interval_secs` becomes `[compactor] interval_secs = ...`. Values set here win over the keys the chart derives from its other values (`object_store.*`, `telemetry.*`, `http.external_url`, `scheduled_reports.renderer.base_url`). Check names against the `conf/config.toml` of the image you run: some tables refuse an unknown key, which stops the application from starting, and the others ignore it without a word. |
 | `extraEnv` | list | `[]` | Extra environment variables for every MoleSignal container. Any setting can also be given as `MS_<SECTION>_<KEY>` (for example `MS_COMPACTOR_INTERVAL_SECS`); environment variables win over `config.toml`. |
 | `extraEnvFrom` | list | `[]` | Extra `envFrom` sources for every MoleSignal container. |
 | `extraVolumes` | list | `[]` | Extra volumes for every MoleSignal pod. |
@@ -366,13 +372,7 @@ The table is generated from `values.yaml` (`python3 scripts/gen-values-doc.py`).
 | `objectStore.existingSecretKeys` | object | `{"accessKey":"access-key","secretKey":"secret-key"}` | Key names inside `existingSecret`. |
 | `standalone.replicaCount` | int | `1` | Replicas. Scaling a standalone install is not supported; use `distributed`. |
 | `standalone.resources` | object | `{}` | Resource requests and limits. |
-| `standalone.terminationGracePeriodSeconds` | int | `60` | Seconds the kubelet waits after SIGTERM before it kills the process. Keep it above the application's drain timeout (`node.drain_timeout_secs`, 30 by default), which is how long pending data may take to flush. |
-| `standalone.persistence.enabled` | bool | `true` | Keep the write-ahead log on a PersistentVolumeClaim. When false an `emptyDir` is used and un-flushed data is lost whenever the pod restarts. |
-| `standalone.persistence.size` | string | `"20Gi"` | Volume size. |
-| `standalone.persistence.storageClass` | string | `""` | Storage class. Empty uses the cluster default. |
-| `standalone.persistence.accessModes` | list | `["ReadWriteOnce"]` | Access modes. |
-| `standalone.persistence.annotations` | object | `{}` | Annotations of the PVC. |
-| `standalone.persistentVolumeClaimRetentionPolicy` | object | `{}` | What happens to the PVC when the StatefulSet is deleted or scaled down (`whenDeleted` / `whenScaled`: `Retain` or `Delete`). Empty keeps the cluster default. |
+| `standalone.terminationGracePeriodSeconds` | int | `60` | Seconds the kubelet waits after SIGTERM before it kills the process. Keep it above the application's drain timeout (`node.drain_timeout_secs`, 30 by default), which is how long pending data may take to flush. The pod needs no volume: a write is acknowledged once its write-ahead log object is in the object store. |
 | `standalone.service.type` | string | `"ClusterIP"` | Service type. |
 | `standalone.service.annotations` | object | `{}` | Service annotations. |
 | `router.replicaCount` | int | `2` | Replicas. Ignored when `autoscaling.enabled`. |
@@ -390,14 +390,7 @@ The table is generated from `values.yaml` (`python3 scripts/gen-values-doc.py`).
 | `router.podDisruptionBudget.maxUnavailable` | int | `1` | Maximum unavailable pods. |
 | `intake.replicaCount` | int | `2` | Replicas. |
 | `intake.resources` | object | `{}` | Resource requests and limits. Every replica buffers up to 1 GiB by default (see `[intake]` in the application's `conf/config.toml`) before it flushes. |
-| `intake.terminationGracePeriodSeconds` | int | `60` | Seconds the kubelet waits after SIGTERM before it kills the process (see `standalone`). |
-| `intake.podManagementPolicy` | string | `"OrderedReady"` | `OrderedReady` waits for each replica's WAL replay before it starts the next; `Parallel` starts them together. |
-| `intake.persistence.enabled` | bool | `true` | Keep each replica's write-ahead log on its own PersistentVolumeClaim. When false an `emptyDir` is used and un-flushed data is lost whenever a pod restarts. |
-| `intake.persistence.size` | string | `"20Gi"` | Volume size per replica. |
-| `intake.persistence.storageClass` | string | `""` | Storage class. Empty uses the cluster default. |
-| `intake.persistence.accessModes` | list | `["ReadWriteOnce"]` | Access modes. |
-| `intake.persistence.annotations` | object | `{}` | Annotations of the PVCs. |
-| `intake.persistentVolumeClaimRetentionPolicy` | object | `{}` | What happens to the PVCs when the StatefulSet is deleted or scaled down (see `standalone`). |
+| `intake.terminationGracePeriodSeconds` | int | `60` | Seconds the kubelet waits after SIGTERM before it kills the process (see `standalone`). A replica that stops flushes what it can and releases its write-ahead log; the other replicas take over the rest at once, and a lost replica's after the application's `wal.lease_secs` (15 by default). |
 | `intake.podDisruptionBudget.enabled` | bool | `false` | Create a PodDisruptionBudget. |
 | `intake.podDisruptionBudget.minAvailable` | null | `null` | Minimum available pods. |
 | `intake.podDisruptionBudget.maxUnavailable` | int | `1` | Maximum unavailable pods. |

@@ -17,16 +17,23 @@ PostgreSQL, where each node registers `MS_CLUSTER_ADVERTISE_ADDR` (`$(POD_IP):50
 
 | Role | Workload | Replicas | Ports | Readiness | Service |
 | --- | --- | --- | --- | --- | --- |
-| `standalone` | StatefulSet + PVC (`/data/wal`) | 1 | 5080 http, 5082 grpc, 4317 otlp-grpc, 5084/5085 probe agents | `/api/v1/healthz` | `<fullname>` |
+| `standalone` | Deployment | 1 | 5080 http, 5082 grpc, 4317 otlp-grpc, 5084/5085 probe agents | `/api/v1/healthz` | `<fullname>` |
 | `router` | Deployment | 2 | 5080, 4317 | `/api/v1/healthz` | `<fullname>-router` |
-| `intake` | StatefulSet + PVC (`/data/wal`) | 2 | 5080, 5082, 4317 | `/api/v1/readyz` | headless |
+| `intake` | Deployment | 2 | 5080, 5082, 4317 | `/api/v1/readyz` | headless |
 | `querier` | Deployment | 2 | 5080, 5082 | `/api/v1/readyz` | `<fullname>-querier` |
 | `compactor` | Deployment | 1 | 5080 | `/api/v1/readyz` | none |
 | `alert` | Deployment | 1 | 5080, 5084, 5085 | `/api/v1/readyz` | `<fullname>-alert` |
 
 The router does not advertise an address (it serves the HTTP API and forwards), exactly as in the
-upstream manifests. There is deliberately **no liveness probe**: a slow write-ahead-log replay must
-not get an intake pod killed.
+upstream manifests. There is deliberately **no liveness probe**: a pod that is slow to start must
+not get killed.
+
+No MoleSignal pod has a volume. The application acknowledges a write only once its write-ahead log
+object is in the object store and keeps a writer lease in PostgreSQL; when an intake pod goes, the
+other intake pods publish what it had not flushed, at once after a drain and after the lease
+(`wal.lease_secs`, 15 seconds) after a crash. Intake and standalone therefore roll like any
+Deployment, a new pod before an old one stops, and keep a 60-second grace period so a stopping pod
+can flush and release its log.
 
 The readiness paths differ because the servers do. `standalone` and `router` run the full HTTP
 server, which answers `/api/v1/readyz` with 401 without a login and only leaves `/api/v1/healthz` open.
@@ -43,7 +50,7 @@ values ─┬─ logging, externalUrl, objectStore, rustfs, web ──► derive
         └─ config (yours) ────────────────────────────────────────────────► deep merge ─► config.toml (ConfigMap)
 ```
 
-- The chart derives a few keys (`wal.dir`, `object_store.*`, `telemetry.*`,
+- The chart derives a few keys (`object_store.*`, `telemetry.*`,
   `http.external_url`, `scheduled_reports.renderer.base_url`) and merges `config` over them, so
   yours win. Everything else is the application's built-in default, which the sample
   `conf/config.toml` documents.

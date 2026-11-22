@@ -5,8 +5,8 @@
 {{- $httpPort := include "molesignal.port" (dict "ctx" . "name" "http") -}}
 MoleSignal {{ .Chart.AppVersion }} was installed as release "{{ .Release.Name }}" in {{ .Values.mode }} mode.
 
-1. Wait for the pods to become ready (the first start pulls images and replays the
-   write-ahead log, which can take a minute or two):
+1. Wait for the pods to become ready (the first start pulls images, which can take a
+   minute or two):
 
      kubectl --namespace {{ $ns }} get pods --selector app.kubernetes.io/instance={{ .Release.Name }} --watch
 

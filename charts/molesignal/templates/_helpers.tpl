@@ -29,7 +29,7 @@ Prefix of every resource name. Kept to 43 characters so that suffixes such as
 {{- end -}}
 
 {{/*
-Name of a role's workload and of its Service. The standalone StatefulSet and its
+Name of a role's workload and of its Service. The standalone Deployment and its
 Service are simply `<fullname>`. dict "ctx" . "role" "router"
 */}}
 {{- define "molesignal.workloadName" -}}
@@ -146,52 +146,41 @@ it looks like a host) and keeps the rest of the path.
 
 {{/*
 Roles ------------------------------------------------------------------------
-Static facts about each role: workload kind, whether it keeps a write-ahead log,
-whether it advertises a gRPC address to its peers, the ports it listens on and its
-readiness probe. They mirror deploy/k8s in the application repository. `standalone`
+Static facts about each role: whether it advertises a gRPC address to its peers, the
+ports it listens on and its readiness probe. They mirror deploy/k8s in the application
+repository. Every role is a Deployment: the application keeps its write-ahead log in
+the object store, so no pod needs a volume of its own. `standalone`
 and `router` run the full HTTP server, which answers /api/v1/readyz with 401 without
 a login; only /api/v1/healthz is open there.
 */}}
 {{- define "molesignal.roleSpecs" -}}
 standalone:
-  kind: StatefulSet
-  wal: true
   advertise: false
   service: true
   ports: [http, grpc, otlp-grpc, probe-register, probe-control]
   probe: {path: /api/v1/healthz, initialDelaySeconds: 10, periodSeconds: 5, failureThreshold: 12}
 router:
-  kind: Deployment
-  wal: false
   advertise: false
   service: true
   ports: [http, otlp-grpc]
   probe: {path: /api/v1/healthz, initialDelaySeconds: 5, periodSeconds: 10}
 intake:
-  kind: StatefulSet
-  wal: true
   advertise: true
   service: true
   headless: true
   ports: [http, grpc, otlp-grpc]
   probe: {path: /api/v1/readyz, initialDelaySeconds: 10, periodSeconds: 5, failureThreshold: 12}
 querier:
-  kind: Deployment
-  wal: false
   advertise: true
   service: true
   ports: [http, grpc]
   probe: {path: /api/v1/readyz, initialDelaySeconds: 5, periodSeconds: 10}
 compactor:
-  kind: Deployment
-  wal: false
   advertise: true
   service: false
   ports: [http]
   probe: {path: /api/v1/readyz, initialDelaySeconds: 5, periodSeconds: 10}
 alert:
-  kind: Deployment
-  wal: false
   advertise: true
   service: true
   ports: [http, probe-register, probe-control]
@@ -270,7 +259,6 @@ variables.
 {{- end -}}
 {{- end -}}
 {{- $base := dict
-    "wal" (dict "dir" "/data/wal")
     "telemetry" (dict "log_level" .Values.logging.level "log_format" .Values.logging.format)
     "object_store" $objectStore
     "scheduled_reports" (dict "renderer" (dict "base_url" (include "molesignal.rendererBaseUrl" .))) -}}
@@ -595,7 +583,7 @@ answer. The application image already carries bash, curl and coreutils.
 {{- end -}}
 
 {{/*
-The pod template of a role, shared by Deployments and StatefulSets.
+The pod template of a role.
 dict "ctx" . "role" "router"
 */}}
 {{- define "molesignal.podTemplate" -}}
@@ -679,10 +667,6 @@ spec:
       volumeMounts:
         - name: config
           mountPath: /app/conf
-        {{- if $spec.wal }}
-        - name: data
-          mountPath: /data
-        {{- end }}
         {{- with $ctx.Values.extraVolumeMounts }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -706,10 +690,6 @@ spec:
     - name: config
       configMap:
         name: {{ include "molesignal.fullname" $ctx }}-config
-    {{- if and $spec.wal (not $roleCfg.persistence.enabled) }}
-    - name: data
-      emptyDir: {}
-    {{- end }}
     {{- with $ctx.Values.extraVolumes }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
@@ -725,6 +705,15 @@ Fails the render early, with a message that says what to change.
 {{- end -}}
 {{- if not (has .Values.releaseChannel (list "alpha" "beta" "rc" "stable")) -}}
 {{- fail (printf "molesignal: `releaseChannel` must be one of alpha, beta, rc, stable; got %q" .Values.releaseChannel) -}}
+{{- end -}}
+
+{{- /* write-ahead log volumes, removed in 0.3.0 */ -}}
+{{- range $role := list "standalone" "intake" -}}
+{{- range $key := list "persistence" "persistentVolumeClaimRetentionPolicy" "podManagementPolicy" -}}
+{{- if hasKey (index $.Values $role) $key -}}
+{{- fail (printf "molesignal: `%s.%s` was removed in chart 0.3.0. The %s pods keep no volume: the application writes its write-ahead log to the object store. Delete the key from the values (see the 0.3.0 upgrade notes)." $role $key $role) -}}
+{{- end -}}
+{{- end -}}
 {{- end -}}
 
 {{- /* metadata database */ -}}

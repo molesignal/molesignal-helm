@@ -27,7 +27,7 @@ commonLabels: {}
 commonAnnotations: {}
 
 # -- Deployment topology.
-# `standalone` runs every role in one StatefulSet (what `docker compose up`
+# `standalone` runs every role in one Deployment (what `docker compose up`
 # does). `distributed` runs router, intake, querier, compactor and alert as
 # separate workloads that scale independently.
 mode: standalone
@@ -68,7 +68,7 @@ externalUrl: ""
 # `config.toml`. Mirrors the TOML layout of the application's `conf/config.toml`:
 # a key `compactor.interval_secs` becomes `[compactor] interval_secs = ...`.
 # Values set here win over the keys the chart derives from its other values
-# (`wal.dir`, `object_store.*`, `telemetry.*`, `http.external_url`,
+# (`object_store.*`, `telemetry.*`, `http.external_url`,
 # `scheduled_reports.renderer.base_url`). Check names against the `conf/config.toml`
 # of the image you run: some tables refuse an unknown key, which stops the
 # application from starting, and the others ignore it without a word.
@@ -357,24 +357,9 @@ standalone:
   resources: {}
   # -- Seconds the kubelet waits after SIGTERM before it kills the process. Keep it
   # above the application's drain timeout (`node.drain_timeout_secs`, 30 by default),
-  # which is how long pending data may take to flush.
+  # which is how long pending data may take to flush. The pod needs no volume: a
+  # write is acknowledged once its write-ahead log object is in the object store.
   terminationGracePeriodSeconds: 60
-  persistence:
-    # -- Keep the write-ahead log on a PersistentVolumeClaim. When false an
-    # `emptyDir` is used and un-flushed data is lost whenever the pod restarts.
-    enabled: true
-    # -- Volume size.
-    size: 20Gi
-    # -- Storage class. Empty uses the cluster default.
-    storageClass: ""
-    # -- Access modes.
-    accessModes:
-      - ReadWriteOnce
-    # -- Annotations of the PVC.
-    annotations: {}
-  # -- What happens to the PVC when the StatefulSet is deleted or scaled down
-  # (`whenDeleted` / `whenScaled`: `Retain` or `Delete`). Empty keeps the cluster default.
-  persistentVolumeClaimRetentionPolicy: {}
   service:
     # -- Service type.
     type: ClusterIP
@@ -418,26 +403,11 @@ intake:
   # -- Resource requests and limits. Every replica buffers up to 1 GiB by default
   # (see `[intake]` in the application's `conf/config.toml`) before it flushes.
   resources: {}
-  # -- Seconds the kubelet waits after SIGTERM before it kills the process (see `standalone`).
+  # -- Seconds the kubelet waits after SIGTERM before it kills the process (see
+  # `standalone`). A replica that stops flushes what it can and releases its write-ahead
+  # log; the other replicas take over the rest at once, and a lost replica's after the
+  # application's `wal.lease_secs` (15 by default).
   terminationGracePeriodSeconds: 60
-  # -- `OrderedReady` waits for each replica's WAL replay before it starts the next;
-  # `Parallel` starts them together.
-  podManagementPolicy: OrderedReady
-  persistence:
-    # -- Keep each replica's write-ahead log on its own PersistentVolumeClaim.
-    # When false an `emptyDir` is used and un-flushed data is lost whenever a pod restarts.
-    enabled: true
-    # -- Volume size per replica.
-    size: 20Gi
-    # -- Storage class. Empty uses the cluster default.
-    storageClass: ""
-    # -- Access modes.
-    accessModes:
-      - ReadWriteOnce
-    # -- Annotations of the PVCs.
-    annotations: {}
-  # -- What happens to the PVCs when the StatefulSet is deleted or scaled down (see `standalone`).
-  persistentVolumeClaimRetentionPolicy: {}
   podDisruptionBudget:
     # -- Create a PodDisruptionBudget.
     enabled: false

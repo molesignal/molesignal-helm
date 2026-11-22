@@ -72,9 +72,6 @@ intake:
   resources:
     requests: {cpu: "1", memory: 2Gi}
     limits: {memory: 3Gi}
-  persistence:
-    size: 100Gi
-    storageClass: fast-ssd
   podDisruptionBudget:
     enabled: true
     maxUnavailable: 1

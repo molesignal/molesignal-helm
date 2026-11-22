@@ -46,14 +46,14 @@ def standalone_defaults() -> None:
             ("Service", f"{FULL}-rustfs"),
             ("Service", f"{FULL}-rustfs-headless"),
             ("ServiceAccount", FULL),
-            ("StatefulSet", FULL),
+            ("Deployment", FULL),
             ("StatefulSet", f"{FULL}-postgresql"),
             ("StatefulSet", f"{FULL}-rustfs"),
         ]
     )
     check(m.kinds() == expected, "creates exactly the expected objects", f"got {m.kinds()}")
 
-    app = m.get("StatefulSet", FULL)
+    app = m.get("Deployment", FULL)
     main = container(app, "molesignal")
     env = env_of(main)
     check(main["image"] == IMAGE, "runs the application image at its latest tag", main["image"])
@@ -89,13 +89,12 @@ def standalone_defaults() -> None:
         ready["httpGet"] == {"path": "/api/v1/healthz", "port": "http"} and ready["failureThreshold"] == 12,
         "readiness asks healthz, the one probe the full HTTP server serves without a login (12 failures allowed)",
     )
-    check("livenessProbe" not in main, "no liveness probe: a slow WAL replay must not get the pod killed")
+    check("livenessProbe" not in main, "no liveness probe: a slow start must not get the pod killed")
     mounts = {vm["name"]: vm["mountPath"] for vm in main["volumeMounts"]}
-    check(mounts == {"config": "/app/conf", "data": "/data"}, "mounts the config and the WAL volume", str(mounts))
-    claim = app["spec"]["volumeClaimTemplates"][0]
+    check(mounts == {"config": "/app/conf"}, "mounts only the config: the WAL lives in the object store", str(mounts))
     check(
-        claim["metadata"]["name"] == "data" and claim["spec"]["resources"]["requests"]["storage"] == "20Gi",
-        "keeps the WAL on a 20Gi claim",
+        [v["name"] for v in pod_spec(app)["volumes"]] == ["config"] and "volumeClaimTemplates" not in app["spec"],
+        "keeps no volume of its own",
     )
     check(pod_spec(app)["terminationGracePeriodSeconds"] == 60, "grace period exceeds the 30s drain timeout")
     check(pod_spec(app)["automountServiceAccountToken"] is False, "does not mount the service account token")
@@ -116,7 +115,7 @@ def standalone_defaults() -> None:
     )
     again = render()
     check(
-        again.get("StatefulSet", FULL)["spec"]["template"]["metadata"]["annotations"] == annotations
+        again.get("Deployment", FULL)["spec"]["template"]["metadata"]["annotations"] == annotations
         and again.get("StatefulSet", f"{FULL}-postgresql")["spec"]["template"]["metadata"]["annotations"]
         == m.get("StatefulSet", f"{FULL}-postgresql")["spec"]["template"]["metadata"]["annotations"],
         "checksums are stable across renders although the generated secrets are not",
@@ -134,7 +133,6 @@ def standalone_defaults() -> None:
             },
             "scheduled_reports": {"renderer": {"base_url": f"http://{FULL}:5080"}},
             "telemetry": {"log_format": "json", "log_level": "info,tantivy=warn"},
-            "wal": {"dir": "/data/wal"},
         },
         "config.toml carries only what the chart derives",
         str(m.config()),
@@ -222,12 +220,12 @@ def distributed_defaults() -> None:
     roles = ("router", "intake", "querier", "compactor", "alert")
     names = {r: f"{FULL}-{r}" for r in roles}
     check(
-        m.names("Deployment") == sorted(names[r] for r in ("router", "querier", "compactor", "alert")),
-        "router, querier, compactor and alert are Deployments",
+        m.names("Deployment") == sorted(names[r] for r in roles),
+        "every role, intake included, is a Deployment",
     )
     check(
-        m.names("StatefulSet") == sorted([names["intake"], f"{FULL}-postgresql", f"{FULL}-rustfs"]),
-        "intake is a StatefulSet",
+        m.names("StatefulSet") == sorted([f"{FULL}-postgresql", f"{FULL}-rustfs"]),
+        "only the bundled PostgreSQL and RustFS are StatefulSets",
     )
     check(
         sorted(m.names("Service"))
@@ -238,7 +236,7 @@ def distributed_defaults() -> None:
         "every role but the compactor has a Service; no standalone objects remain",
     )
 
-    replicas = {r: m.get("StatefulSet" if r == "intake" else "Deployment", names[r])["spec"]["replicas"] for r in roles}
+    replicas = {r: m.get("Deployment", names[r])["spec"]["replicas"] for r in roles}
     check(replicas == {"router": 2, "intake": 2, "querier": 2, "compactor": 1, "alert": 1}, "replica counts match deploy/k8s", str(replicas))
 
     expected_ports = {
@@ -256,7 +254,7 @@ def distributed_defaults() -> None:
         "alert": ("/api/v1/readyz", 5),
     }
     for role in roles:
-        doc = m.get("StatefulSet" if role == "intake" else "Deployment", names[role])
+        doc = m.get("Deployment", names[role])
         main = container(doc, "molesignal")
         env = env_of(main)
         check(env["MS_NODE_ROLES"]["value"] == f'["{role}"]', f"{role}: node role")
@@ -276,22 +274,19 @@ def distributed_defaults() -> None:
                 and env["POD_IP"]["valueFrom"]["fieldRef"]["fieldPath"] == "status.podIP",
                 f"{role}: advertises $(POD_IP):5082 to its peers",
             )
-        wal = "data" in {vm["name"] for vm in main["volumeMounts"]}
-        check(wal == (role == "intake"), f"{role}: WAL volume only on intake")
+        check(
+            {vm["name"] for vm in main["volumeMounts"]} == {"config"},
+            f"{role}: no volume but the config, since the WAL lives in the object store",
+        )
 
-    intake = m.get("StatefulSet", names["intake"])
+    intake = m.get("Deployment", names["intake"])
     check(m.get("Service", names["intake"])["spec"]["clusterIP"] == "None", "intake Service is headless")
-    check(intake["spec"]["serviceName"] == names["intake"], "intake is governed by its own Service")
+    check("strategy" not in intake["spec"], "intake rolls with the Deployment default, a new pod before an old one goes")
     check(pod_spec(intake)["terminationGracePeriodSeconds"] == 60, "intake gets time to drain")
     check(
         all("terminationGracePeriodSeconds" not in pod_spec(m.get("Deployment", names[r])) for r in ("router", "querier", "compactor", "alert")),
         "other roles keep the default grace period",
     )
-    check(
-        intake["spec"]["volumeClaimTemplates"][0]["spec"]["resources"]["requests"]["storage"] == "20Gi",
-        "intake keeps a 20Gi claim per replica",
-    )
-    check(intake["spec"]["podManagementPolicy"] == "OrderedReady", "intake starts replicas one by one")
     check(
         m.config()["scheduled_reports"]["renderer"]["base_url"] == f"http://{FULL}-router:5080",
         "report rendering goes through the router, which serves the UI",
@@ -330,7 +325,7 @@ def external_services() -> None:
                 ("Secret", f"{FULL}-secret"),
                 ("Service", FULL),
                 ("ServiceAccount", FULL),
-                ("StatefulSet", FULL),
+                ("Deployment", FULL),
             ]
         ),
         "no bundled PostgreSQL or RustFS, one extra secret for the inline credentials",
@@ -346,7 +341,7 @@ def external_services() -> None:
         },
         "stores the connection string and keys verbatim",
     )
-    app = m.get("StatefulSet", FULL)
+    app = m.get("Deployment", FULL)
     env = env_of(container(app, "molesignal"))
     check(secret_ref(env, "MS_META_DATABASE_DSN") == (f"{FULL}-external", "database-dsn"), "DSN comes from the external secret")
     check("DB_PASSWORD" not in env, "no separate database password variable")
@@ -369,7 +364,7 @@ def external_services() -> None:
 
     aws = render({"postgresql": {"enabled": False}, "rustfs": {"enabled": False}, "externalDatabase": {"dsn": "postgres://x"}})
     check(aws.returncode == 0, "AWS S3 with no endpoint and no keys renders", aws.stderr)
-    env = env_of(container(aws.get("StatefulSet", FULL), "molesignal"))
+    env = env_of(container(aws.get("Deployment", FULL), "molesignal"))
     check("MS_OBJECT_STORE_ACCESS_KEY" not in env, "no credentials variables without keys")
     check("endpoint" not in aws.config()["object_store"], "no endpoint key for AWS S3")
     check(aws.config()["object_store"]["path_style"] is False, "virtual-hosted style for AWS S3")
@@ -391,7 +386,7 @@ def existing_secrets() -> None:
         "creates no Secret at all when every secret is yours",
         str(m.names("Secret")),
     )
-    env = env_of(container(m.get("StatefulSet", FULL), "molesignal"))
+    env = env_of(container(m.get("Deployment", FULL), "molesignal"))
     check(secret_ref(env, "MS_CIPHER_KEY") == ("core", "ck"), "cipher key from your secret and key name")
     check(secret_ref(env, "MS_SELF_TELEMETRY_CLUSTER_TOKEN") == ("core", "ct"), "cluster token from your secret")
     check(secret_ref(env, "MS_AUTH_JWT_SECRET_OVERRIDE") == ("core", "jwt"), "JWT override from your secret")
@@ -412,7 +407,7 @@ def existing_secrets() -> None:
     )
     check(ext.returncode == 0, "external services through existing secrets render", ext.stderr)
     check(not ext.has("Secret", f"{FULL}-external"), "no external secret is created")
-    env = env_of(container(ext.get("StatefulSet", FULL), "molesignal"))
+    env = env_of(container(ext.get("Deployment", FULL), "molesignal"))
     check(secret_ref(env, "MS_META_DATABASE_DSN") == ("dbsecret", "dsn"), "DSN from your secret")
     check(secret_ref(env, "MS_OBJECT_STORE_SECRET_KEY") == ("objsecret", "sk"), "object store key from your secret")
     _ = b64
