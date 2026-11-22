@@ -49,7 +49,11 @@ def guards() -> None:
     refuses("an invalid release channel", "must be one of", sets=["releaseChannel=prod"])
     refuses("an invalid service type", "must be one of", sets=["router.service.type=Bogus"])
     refuses("a malformed digest", "digest", sets=["image.digest=latest"])
-    refuses("a storage size that is not a quantity", "size", sets=["standalone.persistence.size=lots"])
+    refuses("a storage size that is not a quantity", "size", sets=["postgresql.persistence.size=lots"])
+    refuses("a WAL volume for intake, removed in 0.3.0", "`intake.persistence` was removed", {"intake": {"persistence": {"enabled": True}}})
+    refuses("a WAL volume for standalone, removed in 0.3.0", "`standalone.persistence` was removed", sets=["standalone.persistence.size=20Gi"])
+    refuses("the intake pod management policy, removed in 0.3.0", "`intake.podManagementPolicy` was removed", sets=["intake.podManagementPolicy=Parallel"])
+    refuses("a PVC retention policy, removed in 0.3.0", "`standalone.persistentVolumeClaimRetentionPolicy` was removed", {"standalone": {"persistentVolumeClaimRetentionPolicy": {"whenDeleted": "Delete"}}})
     ok = render({**EXTERNAL, "objectStore": {"existingSecret": "x"}})
     check(ok.returncode == 0, "an existing object-store secret needs no inline keys", ok.stderr)
 

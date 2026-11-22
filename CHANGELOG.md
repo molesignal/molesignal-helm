@@ -10,6 +10,40 @@ breaking changes; they are collected under **Upgrade notes**.
 
 ## [Unreleased]
 
+## [molesignal 0.3.0] - Unreleased
+
+Needs an application release newer than 26.4.0.0-alpha: the first that keeps its write-ahead log in
+the object store. Do not release this chart before that application release is out, since the
+default image is `latest`.
+
+### Changed
+
+- **`intake` and `standalone` are Deployments without volumes**, like every other role. The
+  application acknowledges a write only once its write-ahead log object is in the object store, and
+  the other intake pods publish what a lost pod had not flushed, so a pod and its disk can go at any
+  time. They roll like any Deployment, a new pod before an old one stops, and keep their 60-second
+  grace period to flush and release the log.
+- The chart no longer writes `wal.dir` into `config.toml`, and the install notes no longer mention a
+  replay on the first start.
+
+### Removed
+
+- `standalone.persistence`, `standalone.persistentVolumeClaimRetentionPolicy`, `intake.persistence`,
+  `intake.podManagementPolicy` and `intake.persistentVolumeClaimRetentionPolicy`. A values file that
+  still sets one is refused with a message that names the key.
+
+### Upgrade notes
+
+1. Delete the removed keys from the values file and pin `image.tag` to an application release newer
+   than 26.4.0.0-alpha.
+2. `helm upgrade` replaces the `intake` (or `standalone`) StatefulSet with a Deployment of the same
+   name. The old pods receive `SIGTERM` and flush their buffers; stop the senders first, or check that
+   each old pod's log ends with `intake drained`. Records an old pod could not flush stay on its
+   volume, which the new application does not read.
+3. Once the old pods are gone, delete their claims:
+   `kubectl delete pvc --selector app.kubernetes.io/instance=<release>,app.kubernetes.io/component=intake`
+   (`component=standalone` for a standalone install).
+
 ## [probe-agent 0.1.1] - 2026-10-31
 
 Deploys `ghcr.io/molesignal/probe-agent:latest`, and has the same requirements as 0.1.0.

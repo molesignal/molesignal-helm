@@ -5,8 +5,6 @@ router:
   replicaCount: 1
 intake:
   replicaCount: 1
-  persistence:
-    size: 1Gi
 querier:
   replicaCount: 1
 compactor:
