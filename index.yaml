@@ -4,6 +4,63 @@ entries:
   - annotations:
       artifacthub.io/category: monitoring-logging
       artifacthub.io/changes: |
+        - kind: changed
+          description: intake and standalone are Deployments without volumes; the application keeps its write-ahead log in the object store
+        - kind: removed
+          description: The persistence, PVC retention and pod management values of intake and standalone
+      artifacthub.io/containsSecurityUpdates: "false"
+      artifacthub.io/images: |
+        - name: molesignal
+          image: ghcr.io/molesignal/molesignal:latest
+          platforms:
+            - linux/amd64
+            - linux/arm64
+        - name: postgresql
+          image: postgres:17
+        - name: rustfs
+          image: rustfs/rustfs:latest
+        - name: aws-cli
+          image: amazon/aws-cli:latest
+      artifacthub.io/license: Apache-2.0
+      artifacthub.io/links: |
+        - name: Documentation
+          url: https://github.com/molesignal/molesignal-helm/tree/main/docs
+        - name: Application
+          url: https://github.com/molesignal/molesignal
+      artifacthub.io/prerelease: "true"
+    apiVersion: v2
+    appVersion: latest
+    created: "2026-11-22T11:37:02.212816137Z"
+    description: Self-hosted, OpenTelemetry-native observability. Logs, metrics and
+      traces on one Parquet / DataFusion engine, with PostgreSQL for metadata and
+      any S3-compatible object store for data.
+    digest: bb5a2e5850232566f636e83cb089bcb05a1731e4d4af9b5496f1f4de4329ddcf
+    home: https://www.molesignal.com
+    icon: https://www.molesignal.com/icon-512.png
+    keywords:
+    - observability
+    - opentelemetry
+    - otlp
+    - logs
+    - metrics
+    - traces
+    - apm
+    - monitoring
+    kubeVersion: '>=1.27.0-0'
+    maintainers:
+    - name: MoleSignal
+      url: https://github.com/molesignal
+    name: molesignal
+    sources:
+    - https://github.com/molesignal/molesignal-helm
+    - https://github.com/molesignal/molesignal
+    type: application
+    urls:
+    - https://github.com/molesignal/molesignal-helm/releases/download/molesignal-0.3.0/molesignal-0.3.0.tgz
+    version: 0.3.0
+  - annotations:
+      artifacthub.io/category: monitoring-logging
+      artifacthub.io/changes: |
         - kind: fixed
           description: Standalone pods, the default, never became ready because the readiness probe asked a path that needs a login
         - kind: fixed
@@ -214,4 +271,4 @@ entries:
     urls:
     - https://github.com/molesignal/molesignal-helm/releases/download/probe-agent-0.1.0/probe-agent-0.1.0.tgz
     version: 0.1.0
-generated: "2026-10-31T14:07:28.254017641Z"
+generated: "2026-11-22T11:37:02.336494596Z"
