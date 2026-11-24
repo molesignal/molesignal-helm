@@ -1,5 +1,6 @@
 CHART := charts/molesignal
 PROBE_CHART := charts/probe-agent
+NODE_CHART := charts/node-agent
 
 # Never let a helm call reach a real cluster from here: nothing in this repository needs one.
 export KUBECONFIG := /dev/null
@@ -26,6 +27,10 @@ lint:
 	@for f in $(PROBE_CHART)/ci/*-values.yaml examples/probe-agent/*.yaml; do \
 	  echo "==> $$f"; helm lint $(PROBE_CHART) --strict --values $$f || exit 1; \
 	done
+	@# Nor here: the node agent needs an endpoint and a token.
+	@for f in $(NODE_CHART)/ci/*-values.yaml examples/node-agent/*.yaml; do \
+	  echo "==> $$f"; helm lint $(NODE_CHART) --strict --values $$f || exit 1; \
+	done
 
 test:
 	python3 tests/run.py
@@ -42,6 +47,7 @@ docs-check:
 package:
 	helm package $(CHART) --destination dist
 	helm package $(PROBE_CHART) --destination dist
+	helm package $(NODE_CHART) --destination dist
 
 clean:
 	rm -rf dist .cr-release-packages .cr-index

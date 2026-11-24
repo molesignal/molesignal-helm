@@ -6,7 +6,8 @@
 #            directory of each chart (scripts/ci-install.sh). Probe Agents register with a server
 #            it installs too, and have to come online. Runs when a chart changed and once a week,
 #            because the charts follow images that move without a change here. Fails if an
-#            image it would install does not exist.
+#            image it would install does not exist. The node-agent chart is not installed yet:
+#            its image is not published, and a kind node shows little of what a real one would.
 name: Lint and test
 
 on:
@@ -88,6 +89,12 @@ jobs:
             for values in charts/probe-agent/ci/*-values.yaml examples/probe-agent/*.yaml; do
               echo "==> probe-agent, Kubernetes ${k8s}, values: ${values}"
               helm template check charts/probe-agent --namespace check \
+                --kube-version "${k8s}" --values "${values}" \
+                | kubeconform -strict -summary -kubernetes-version "${k8s}"
+            done
+            for values in charts/node-agent/ci/*-values.yaml examples/node-agent/*.yaml; do
+              echo "==> node-agent, Kubernetes ${k8s}, values: ${values}"
+              helm template check charts/node-agent --namespace check \
                 --kube-version "${k8s}" --values "${values}" \
                 | kubeconform -strict -summary -kubernetes-version "${k8s}"
             done

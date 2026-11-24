@@ -9,6 +9,7 @@ OpenTelemetry-native observability: logs, metrics and traces on one Parquet / Da
 | --- | --- |
 | [`charts/molesignal`](charts/molesignal) | MoleSignal itself, as one pod (`standalone`) or as separate router / intake / querier / compactor / alert workloads (`distributed`), with an optional bundled PostgreSQL and RustFS for evaluation |
 | [`charts/probe-agent`](charts/probe-agent) | Probe Agents, which run synthetic checks from a private location and connect to a MoleSignal server, in this cluster or elsewhere |
+| [`charts/node-agent`](charts/node-agent) | The node agent, a DaemonSet that observes every Linux node with eBPF (kernel events, host metrics, profiles) and sends over OTLP to a MoleSignal intake |
 
 Each chart is versioned on its own, apart from the other and from the application: see
 [versioning](docs/versioning.md).
@@ -46,6 +47,9 @@ To run synthetic checks from inside a network, install Probe Agents next. They n
 token from the server, and the server needs an address they can reach:
 [`charts/probe-agent`](charts/probe-agent/README.md).
 
+To observe the cluster's nodes themselves, install the node agent with an intake endpoint and a token:
+[`charts/node-agent`](charts/node-agent/README.md).
+
 ## Examples
 
 | File | For |
@@ -55,13 +59,15 @@ token from the server, and the server needs an address they can reach:
 | [`examples/ingress-nginx.yaml`](examples/ingress-nginx.yaml) | UI and OTLP gRPC through ingress-nginx, with live-tail settings and `/metrics` blocked |
 | [`examples/private-registry.yaml`](examples/private-registry.yaml) | every image through a mirror or an air-gapped registry |
 | [`examples/probe-agent/agent-pool.yaml`](examples/probe-agent/agent-pool.yaml) | for the `probe-agent` chart: several Agents with an Agent Token in a Secret you manage |
+| [`examples/node-agent/fewer-host-mounts.yaml`](examples/node-agent/fewer-host-mounts.yaml) | for the `node-agent` chart: containerd nodes, no Docker socket or debugfs, a PriorityClass of its own |
 
 ## Repository layout
 
 ```
 charts/molesignal/     the server's chart (templates, values, JSON schema, ci/ values for chart-testing)
 charts/probe-agent/    the Agents' chart, laid out the same way
-examples/              values files for common setups (examples/probe-agent/ for the Agents)
+charts/node-agent/     the node agent's chart, laid out the same way
+examples/              values files for common setups (examples/probe-agent/, examples/node-agent/ for those charts)
 docs/                  versioning, publishing, how the chart is put together
 tests/                 offline render tests and mutation tests (Python, no cluster needed)
 scripts/               generator for the values tables of the chart READMEs, and the install on kind

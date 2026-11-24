@@ -581,7 +581,7 @@ def landing_page_content() -> None:
 def release_each_chart() -> None:
     section("release workflow · every chart in charts/ is released under its own name")
     charts = sorted(p.parent.name for p in (ROOT / "charts").glob("*/Chart.yaml"))
-    check(charts == ["molesignal", "probe-agent"], "both charts are in charts/", str(charts))
+    check(charts == ["molesignal", "node-agent", "probe-agent"], "the three charts are in charts/", str(charts))
     config = subprocess.run(["yq", '.["release-name-template"]', str(ROOT / "cr.yaml")], capture_output=True, text=True, check=True).stdout.strip()
     check(config == "{{ .Name }}-{{ .Version }}", "releases are named after the chart and its version, so versions of two charts cannot collide", config)
     chart_dirs = subprocess.run(["yq", '.["chart-dirs"][0]', str(ROOT / "ct.yaml")], capture_output=True, text=True, check=True).stdout.strip()

@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping. This is a small repository: two charts, with tests that run in seconds
+Thanks for helping. This is a small repository: three charts, with tests that run in seconds
 and need no cluster.
 
 ## Setup
@@ -13,10 +13,10 @@ make check
 ```
 
 runs everything CI runs without a cluster: `helm lint --strict` for the defaults and every file in
-`ci` of each chart and `examples` (the defaults of `probe-agent` cannot pass, because an Agent has to
-be told which server to register with), the check that the values table in each chart README is
+`ci` of each chart and `examples` (the defaults of `probe-agent` and `node-agent` cannot pass, because
+an agent has to be told which server to send to), the check that the values table in each chart README is
 current, the render tests and the mutation tests. CI adds a kubeconform pass and an install on
-kind.
+kind (not of `node-agent` yet, whose image is not published).
 
 The install job in CI needs images it can pull: `ghcr.io/molesignal/molesignal` and
 `ghcr.io/molesignal/probe-agent` at `latest`, unless the repository variable `MOLESIGNAL_IMAGE_TAG`
@@ -35,7 +35,7 @@ a test must never be able to touch yours.
    fails on a value without one.
 2. **Constrain it** in `values.schema.json` when the type or the allowed values are known. The
    top level is strict, so a typo in a key is an error rather than silence.
-3. **Test it**: a scenario in `tests/scenarios_*.py` (`scenarios_probe_agent.py` for that chart) that
+3. **Test it**: a scenario in `tests/scenarios_*.py` (`scenarios_probe_agent.py` and `scenarios_node_agent.py` for those charts) that
    renders with the value and checks the result. Look at what is already there; the harness checks that every selector, port, secret
    key and volume the manifests mention exists, on every render you pass to `integrity()`.
 4. **Check the tests can fail.** If you changed logic rather than adding a value, add a mutation

@@ -1,7 +1,7 @@
 # How the charts are put together
 
 The first part is about `molesignal`, the chart of the server. [The probe-agent chart](#the-probe-agent-chart)
-is at the end.
+and [the node-agent chart](#the-node-agent-chart) are at the end.
 
 ## Relation to the application's own manifests
 
@@ -157,3 +157,30 @@ PostgreSQL and a real Agent, which is why `scripts/ci-install.sh` goes all the w
 The chart has no probes. The Agent has no port to ask, and it retries the control stream for
 ever, so a pod that is `Running` says nothing about the connection and a restart would not help. What
 tells whether an Agent is connected is its status on the server, which is what CI checks.
+
+## The node-agent chart
+
+The node agent runs on every node, reads the node through host namespaces, host paths and nine
+capabilities, and sends over OTLP. Its repository has a manifest, `deploy/kubernetes/node-agent.yaml`,
+whose README gives the reason for each of those; this chart renders the same DaemonSet, and
+`tests/scenarios_node_agent.py` keeps a copy of the manifest's security context, probes, mounts and
+host paths to compare against. Where the chart differs, it is on purpose:
+
+| What | Manifest | Chart | Why |
+| --- | --- | --- | --- |
+| Names and selector | `molesignal-node-agent`, selector `app.kubernetes.io/name` only | `<release>-node-agent` (`molesignal-node-agent` for a release called `molesignal`), selector name / instance / component | The selector of the other charts; two releases must not select each other's pods. |
+| Namespace | created, labelled `privileged` | `namespace.create`, off by default | Helm installs into a namespace it is given; creating it as well conflicts with `--create-namespace`. The notes say how to label it. |
+| Token | the key `token` of a fixed Secret | `items` maps any key to the file `token`; or a Secret from `token.value` | The agent reads `MS_TOKEN_PATH`, which stays `/etc/molesignal-node-agent/token`. Mode 0400 is written as 256, which no YAML parser reads differently. |
+| Node selector | none | `kubernetes.io/os: linux` | Every taint is tolerated, which would let the Linux-only agent onto Windows nodes. |
+| Pod template | — | `checksum/config` | The settings arrive through `envFrom`, which a running pod does not see change. The token needs no checksum: the agent re-reads the file. |
+| Optional mounts | always | `hostMounts.<name>.enabled` | The agent degrades the collectors that need a missing path; `machine-id` has no switch, because without it every node is the same host. |
+
+Host PID and network, `dnsPolicy`, the paths in the container and the hostPath types are fixed, not
+values: the agent does not work without the first three, and looks for the others where they are.
+`podSecurityContext.fsGroup` is refused because the kubelet would make the token group-readable, which
+the agent rejects at startup. `enrollment.managed` is a placeholder that the chart refuses: the agent's
+control protocol does not exist yet.
+
+The chart is not installed in CI. Its image is not published, and a kind node is a container, whose
+BTF, tracefs and process table belong to the machine that runs it: an install there would prove the
+Pod Security level and the hostPath types at most. The first install on a real node is still to come.

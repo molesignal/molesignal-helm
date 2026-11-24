@@ -1,0 +1,44 @@
+# For the node-agent chart: nodes on containerd with a current kernel, a token in a Secret you
+# manage, and as little of the node in the pod as that allows.
+#
+#   kubectl create namespace molesignal
+#   kubectl label namespace molesignal pod-security.kubernetes.io/enforce=privileged
+#   kubectl --namespace molesignal create secret generic molesignal-node-agent-token \
+#     --from-file=token=./agent.token
+#   helm install molesignal molesignal/node-agent --namespace molesignal \
+#     --values fewer-host-mounts.yaml
+endpoint: https://intake.molesignal.example
+
+token:
+  existingSecret: molesignal-node-agent-token
+
+hostMounts:
+  # No Docker on these nodes: keep the socket out of the pod.
+  dockerSocket:
+    enabled: false
+  # /sys/kernel/tracing exists on every current kernel; debugfs is only the fallback.
+  debugfs:
+    enabled: false
+
+config:
+  logLevel: info
+  # Report every dropped packet, not only TCP.
+  dropwatchFilter: ""
+  # Only the physical interfaces; leave out veths and bridges.
+  netdev:
+    eventsDevices: ["eth[0-9]+", "ens.*", "bond[0-9]+"]
+  extra:
+    # 2 GiB of spool on each node while the intake cannot be reached.
+    MS_SPOOL_QUOTA_BYTES: "2147483648"
+
+# A class of its own instead of system-node-critical, for clusters that only admit the system
+# classes in kube-system.
+priorityClass:
+  create: true
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    memory: 512Mi

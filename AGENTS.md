@@ -1,10 +1,12 @@
 # Working in this repository
 
-Two Helm charts for the MoleSignal application, plus offline tests: `charts/molesignal` (the server)
-and `charts/probe-agent` (Agents for private locations of synthetic monitoring). The application lives
-in `../molesignal`; its `deploy/k8s` manifests are what the server's chart mirrors, its `bin/probe-agent`
-and `deploy/docker/Dockerfile.probe-agent.release` what the Agents' chart is written against, and its
-`conf/config.toml` documents every setting.
+Three Helm charts for the MoleSignal application, plus offline tests: `charts/molesignal` (the server),
+`charts/probe-agent` (Agents for private locations of synthetic monitoring) and `charts/node-agent` (the
+eBPF node agent, a DaemonSet). The application lives in `../molesignal`; its `deploy/k8s` manifests are
+what the server's chart mirrors, its `bin/probe-agent` and `deploy/docker/Dockerfile.probe-agent.release`
+what the Agents' chart is written against, and its `conf/config.toml` documents every setting. The node
+agent lives in `../molesignal-node-agent`; its `deploy/kubernetes/node-agent.yaml` is what the node-agent
+chart mirrors, and its README's configuration section lists the `MS_*` variables.
 
 ## Commands
 
@@ -12,7 +14,7 @@ and `deploy/docker/Dockerfile.probe-agent.release` what the Agents' chart is wri
 - `make docs`: regenerate the values table of each chart's `README.md` after editing a
   `values.yaml` (every value needs a `# --` description, or the generator fails).
 - `python3 tests/run.py -k <module>` runs one group of scenarios (`probe_agent` for the Agents'
-  chart, `scripts` for the install script); `python3 tests/mutate.py -k <name>` one mutation.
+  chart, `node_agent` for the node agent's, `scripts` for the install script); `python3 tests/mutate.py -k <name>` one mutation.
 
 ## Rules
 

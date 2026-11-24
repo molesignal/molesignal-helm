@@ -230,6 +230,79 @@ PROBE_AGENT_MUTATIONS = [
      "{{- if gt $replicas 1 }}", "{{- if false }}", "probe_agent"),
 ]
 
+# The same for charts/node-agent; the module that covers it is always node_agent.
+NODE_AGENT_MUTATIONS = [
+    ("no-host-pids", "templates/daemonset.yaml", "      hostPID: true\n", "", "node_agent"),
+    ("no-host-network", "templates/daemonset.yaml", "      hostNetwork: true\n", "", "node_agent"),
+    ("no-cluster-dns-on-host-network", "templates/daemonset.yaml", "      dnsPolicy: ClusterFirstWithHostNet\n", "", "node_agent"),
+    ("token-readable-by-all", "templates/daemonset.yaml", "defaultMode: 256", "defaultMode: 420", "node_agent"),
+    ("token-file-named-after-key", "templates/daemonset.yaml",
+     "                path: token\n", "                path: {{ .Values.token.existingSecretKey }}\n", "node_agent"),
+    ("host-mounts-writable", "templates/daemonset.yaml",
+     "            - name: {{ .name }}\n              mountPath: {{ .mountPath }}\n              readOnly: true\n",
+     "            - name: {{ .name }}\n              mountPath: {{ .mountPath }}\n", "node_agent"),
+    ("config-change-does-not-roll", "templates/daemonset.yaml",
+     '{{ include "node-agent.configEnv" . | sha256sum }}', '{{ "" | sha256sum }}', "node_agent"),
+    ("disabled-mount-still-mounted", "templates/_helpers.tpl",
+     '{{- if or (eq .key "machineId") $cfg.enabled -}}', "{{- if true -}}", "node_agent"),
+    ("machine-id-optional", "templates/_helpers.tpl",
+     '{{- if or (eq .key "machineId") $cfg.enabled -}}', "{{- if $cfg.enabled -}}", "node_agent"),
+    ("host-path-ignored", "templates/_helpers.tpl",
+     '(dict "hostPath" $cfg.hostPath)', '(dict "hostPath" .mountPath)', "node_agent"),
+    ("null-written-as-empty", "templates/_helpers.tpl",
+     '{{- if not (kindIs "invalid" $c.dropwatchFilter) }}', "{{- if true }}", "node_agent"),
+    ("empty-filter-dropped", "templates/_helpers.tpl",
+     '{{- if not (kindIs "invalid" $c.dropwatchFilter) }}', "{{- if $c.dropwatchFilter }}", "node_agent"),
+    ("empty-device-list-dropped", "templates/_helpers.tpl",
+     '{{- if not (kindIs "invalid" $list) }}', "{{- if $list }}", "node_agent"),
+    ("collectors-joined-with-spaces", "templates/_helpers.tpl",
+     '"MS_COLLECTORS_ALLOW" (join "," .)', '"MS_COLLECTORS_ALLOW" (join " " .)', "node_agent"),
+    ("false-dropped", "templates/_helpers.tpl",
+     '{{- if not (kindIs "invalid" $c.legacyMetrics) }}', "{{- if $c.legacyMetrics }}", "node_agent"),
+    ("managed-enrollment-accepted", "templates/_helpers.tpl",
+     "{{- if .Values.enrollment.managed -}}", "{{- if false -}}", "node_agent"),
+    ("endpoint-scheme-unchecked", "templates/_helpers.tpl",
+     '{{- if not (or (hasPrefix "https://" .Values.endpoint) (hasPrefix "http://" .Values.endpoint)) -}}', "{{- if false -}}", "node_agent"),
+    ("token-optional", "templates/_helpers.tpl",
+     "{{- if not (or $tok.value $tok.existingSecret) -}}", "{{- if false -}}", "node_agent"),
+    ("two-tokens-accepted", "templates/_helpers.tpl",
+     "{{- if and $tok.value $tok.existingSecret -}}", "{{- if false -}}", "node_agent"),
+    ("fsgroup-accepted", "templates/_helpers.tpl",
+     "{{- with .Values.podSecurityContext.fsGroup -}}", "{{- with false -}}", "node_agent"),
+    ("allow-and-deny-accepted", "templates/_helpers.tpl",
+     "{{- if has . $c.collectors.deny -}}", "{{- if false -}}", "node_agent"),
+    ("comma-in-pattern-accepted", "templates/_helpers.tpl",
+     '{{- if contains "," . -}}', "{{- if false -}}", "node_agent"),
+    ("extra-overrides-the-chart", "templates/_helpers.tpl",
+     "{{- if has $k $managed -}}", "{{- if false -}}", "node_agent"),
+    ("grace-period-unchecked", "templates/_helpers.tpl",
+     "{{- if le (mul (.Values.terminationGracePeriodSeconds | int64) 1000) $shutdown -}}", "{{- if false -}}", "node_agent"),
+    ("agent-default-drain-forgotten", "templates/_helpers.tpl", "ternary 10000", "ternary 0", "node_agent"),
+    ("own-priority-class-unused", "templates/_helpers.tpl",
+     '{{- if .Values.priorityClass.create -}}\n{{- include "node-agent.fullname" . -}}',
+     '{{- if false -}}\n{{- include "node-agent.fullname" . -}}', "node_agent"),
+    ("registry-not-applied", "templates/_helpers.tpl",
+     "{{- if $registry -}}\n{{- $parts", "{{- if false -}}\n{{- $parts", "node_agent"),
+    ("selector-takes-common-labels", "templates/_helpers.tpl",
+     "app.kubernetes.io/component: agent\n{{- end -}}",
+     "app.kubernetes.io/component: agent\n{{- with .Values.commonLabels }}\n{{ toYaml . }}\n{{- end }}\n{{- end -}}", "node_agent"),
+    ("namespace-deleted-on-uninstall", "templates/namespace.yaml", "    helm.sh/resource-policy: keep\n", "", "node_agent"),
+    ("capability-missing", "values.yaml", "      - SYSLOG           # read /dev/kmsg when kernel.dmesg_restrict=1\n", "", "node_agent"),
+    ("privileged", "values.yaml", "  privileged: false", "  privileged: true", "node_agent"),
+    ("seccomp-blocks-bpf", "values.yaml", "    type: Unconfined", "    type: RuntimeDefault", "node_agent"),
+    ("writable-root", "values.yaml", "  readOnlyRootFilesystem: true", "  readOnlyRootFilesystem: false", "node_agent"),
+    ("service-account-token-mounted", "values.yaml", "  automount: false", "  automount: true", "node_agent"),
+    ("namespace-not-privileged", "values.yaml",
+     "    pod-security.kubernetes.io/enforce: privileged", "    pod-security.kubernetes.io/enforce: baseline", "node_agent"),
+    ("windows-nodes-too", "values.yaml", "nodeSelector:\n  kubernetes.io/os: linux", "nodeSelector: {}", "node_agent"),
+    ("tainted-nodes-unobserved", "values.yaml", "tolerations:\n  - operator: Exists", "tolerations: []", "node_agent"),
+    ("readiness-asks-liveness", "values.yaml", '"--endpoint", "readyz"]', '"--endpoint", "healthz"]', "node_agent"),
+    ("annotation-drifts-from-appversion", "Chart.yaml",
+     "image: molesignal/molesignal-node-agent:0.1.0", "image: molesignal/molesignal-node-agent:latest", "node_agent"),
+    ("schema-allows-typos", "values.schema.json",
+     '"type": "object",\n  "additionalProperties": false,\n  "$defs"', '"type": "object",\n  "additionalProperties": true,\n  "$defs"', "node_agent"),
+]
+
 # The same for scripts/ci-install.sh: name, exact text, replacement. The scripts module covers them.
 SCRIPT_MUTATIONS = [
     ("offline-agents-count", 'length == $count and all(.[]; .status == "online")', "length == $count"),
@@ -350,6 +423,10 @@ def main() -> int:
     for mutation in filter(wanted, PROBE_AGENT_MUTATIONS):
         ran += 1
         if not mutate_chart("probe-agent", "PROBE_AGENT_CHART", mutation):
+            survivors.append(mutation[0])
+    for mutation in filter(wanted, NODE_AGENT_MUTATIONS):
+        ran += 1
+        if not mutate_chart("node-agent", "NODE_AGENT_CHART", mutation):
             survivors.append(mutation[0])
     for mutation in filter(wanted, SCRIPT_MUTATIONS):
         ran += 1

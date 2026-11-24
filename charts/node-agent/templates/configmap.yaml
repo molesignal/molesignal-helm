@@ -1,0 +1,19 @@
+{{- /*
+The agent's settings, as the `MS_*` environment variables it reads (it has no config file in
+standalone mode). Never a secret: the token is a file from a Secret. The DaemonSet carries a
+checksum of this, so that a change rolls the pods.
+*/ -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "node-agent.fullname" . }}
+  labels:
+    {{- include "node-agent.labels" . | nindent 4 }}
+  {{- with include "node-agent.annotations" (dict "ctx" .) }}
+  annotations:
+    {{- . | nindent 4 }}
+  {{- end }}
+data:
+  {{- range $k, $v := include "node-agent.configEnv" . | fromJson }}
+  {{ $k }}: {{ $v | quote }}
+  {{- end }}

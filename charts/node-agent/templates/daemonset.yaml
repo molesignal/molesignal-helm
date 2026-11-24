@@ -1,0 +1,147 @@
+{{- /*
+One agent per node, the same as deploy/kubernetes/node-agent.yaml in the agent's repository. Host
+PID and network namespaces are fixed rather than values: the agent reads every process's /proc
+with host pids, which BPF events carry too, and the network metrics are the node's. The health
+endpoints listen on the node's loopback only, so the probes run the agent's own client through
+exec, inside the same network namespace.
+*/ -}}
+{{- $tokenDir := include "node-agent.tokenDir" . -}}
+{{- $stateDir := include "node-agent.stateDir" . -}}
+{{- $mounts := include "node-agent.enabledHostMounts" . | fromJsonArray -}}
+{{- $priority := include "node-agent.priorityClassName" . -}}
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ include "node-agent.fullname" . }}
+  labels:
+    {{- include "node-agent.labels" . | nindent 4 }}
+  {{- with include "node-agent.annotations" (dict "ctx" .) }}
+  annotations:
+    {{- . | nindent 4 }}
+  {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "node-agent.selectorLabels" . | nindent 6 }}
+  {{- with .Values.updateStrategy }}
+  updateStrategy:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  template:
+    metadata:
+      labels:
+        {{- include "node-agent.labels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        # The settings reach the agent through envFrom, which a running pod does not see change.
+        checksum/config: {{ include "node-agent.configEnv" . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "node-agent.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automount }}
+      {{- with include "node-agent.imagePullSecrets" . }}
+      imagePullSecrets:
+        {{- . | nindent 8 }}
+      {{- end }}
+      {{- with $priority }}
+      priorityClassName: {{ . }}
+      {{- end }}
+      hostPID: true
+      hostNetwork: true
+      # Cluster names still resolve with the node's network, for an intake inside the cluster.
+      dnsPolicy: ClusterFirstWithHostNet
+      # SIGTERM drains the spool for up to MS_SHUTDOWN_TIMEOUT_MS (10 s by default).
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds | int64 }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: agent
+          image: {{ include "node-agent.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["run"]
+          envFrom:
+            - configMapRef:
+                name: {{ include "node-agent.fullname" . }}
+            {{- with .Values.extraEnvFrom }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          env:
+            - name: MS_TOKEN_PATH
+              value: {{ $tokenDir }}/token
+            - name: MS_STATE_DIR
+              value: {{ $stateDir }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with .Values.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: token
+              mountPath: {{ $tokenDir }}
+              readOnly: true
+            - name: state
+              mountPath: {{ $stateDir }}
+            {{- range $mounts }}
+            - name: {{ .name }}
+              mountPath: {{ .mountPath }}
+              readOnly: true
+            {{- end }}
+            {{- with .Values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+      volumes:
+        - name: token
+          secret:
+            secretName: {{ include "node-agent.tokenSecretName" . }}
+            # Whatever the key, the agent finds the file as `token`.
+            items:
+              - key: {{ .Values.token.existingSecretKey }}
+                path: token
+            # 0400, owner-only: the agent refuses a token file its group or others can read.
+            # Written in decimal, which every YAML parser reads the same way.
+            defaultMode: 256
+        - name: state
+          hostPath:
+            path: {{ .Values.state.hostPath }}
+            type: DirectoryOrCreate
+        {{- range $mounts }}
+        - name: {{ .name }}
+          hostPath:
+            path: {{ .hostPath }}
+            type: {{ .type | quote }}
+        {{- end }}
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}

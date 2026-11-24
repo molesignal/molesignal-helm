@@ -2,15 +2,15 @@
 
 Each chart and the application are versioned separately. This is deliberate: a fix to a
 template, a new value or a better default is a chart release even when the application did
-not change, and a new application release is not always a chart release. The two charts,
-`molesignal` and `probe-agent`, have nothing to do with each other's versions either: each has its own
-`Chart.yaml`, its own GitHub releases (`molesignal-<version>`, `probe-agent-<version>`) and its own
-package on ghcr.io, and changing one does not release the other.
+not change, and a new application release is not always a chart release. The charts,
+`molesignal`, `probe-agent` and `node-agent`, have nothing to do with each other's versions either: each
+has its own `Chart.yaml`, its own GitHub releases (`molesignal-<version>`, `probe-agent-<version>`,
+`node-agent-<version>`) and its own package on ghcr.io, and changing one does not release the others.
 
 | Where | What | Format |
 | --- | --- | --- |
 | `version` in `Chart.yaml` | the **chart** | SemVer, `0.1.0` |
-| `appVersion` in `Chart.yaml` | the image the chart deploys by default, of the application or of the Agent | `latest` |
+| `appVersion` in `Chart.yaml` | the image the chart deploys by default, of the application or of the Agent | `latest`; `0.1.0` for `node-agent` |
 | `image.tag` in the values | overrides `appVersion` for one install | any published tag |
 
 The application's versions have four numbers and are not SemVer; the chart's are, because
@@ -20,8 +20,12 @@ The `molesignal` chart deploys the application's `latest` image (and RustFS's an
 PostgreSQL is pinned, to 17), and the `probe-agent` chart the Agent's, so a new application release does
 not need a new chart. What does need one is a change in something a chart mirrors from the
 application: a role name, a setting, a port, a probe in `deploy/k8s`; a flag of `probe-agent`, or
-how it starts Chromium. Each changelog entry says which state of the application it was
-written against. CI installs the charts on kind once a week, so a `latest` that no longer starts with
+how it starts Chromium. The `node-agent` chart is the exception: the node agent is versioned on its own,
+in SemVer (`0.1.0` today), so the chart's `appVersion` is one of its releases, pulled `IfNotPresent`, and
+moving the default to a newer agent is a chart release. What that chart mirrors is the agent's
+`deploy/kubernetes/node-agent.yaml` and its `MS_*` variables. Each changelog entry says which state of
+the application (or the agent) it was written against. CI installs the `molesignal` and `probe-agent`
+charts on kind once a week, so a `latest` that no longer starts with
 them shows up without anyone changing a chart. A renamed setting does not fail that install: most
 tables of the application's configuration ignore unknown keys, so check the chart's examples and
 docs against `conf/config.toml` when the application renames one.
