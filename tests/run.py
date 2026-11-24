@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from harness import results  # noqa: E402
 
-MODULES = ["install", "secrets", "config", "options", "guards", "scripts", "probe_agent"]
+MODULES = ["install", "secrets", "config", "options", "guards", "scripts", "probe_agent", "node_agent"]
 
 
 def main() -> int:

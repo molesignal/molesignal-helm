@@ -1,0 +1,21 @@
+{{- /*
+The release's namespace, when the chart is asked to create it, with the Pod Security labels the
+agent needs. Kept on uninstall, so that removing the release does not take everything else in the
+namespace with it; a later install of the same release adopts it again.
+*/ -}}
+{{- if .Values.namespace.create }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Release.Namespace }}
+  labels:
+    {{- include "node-agent.labels" . | nindent 4 }}
+    {{- with .Values.namespace.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  annotations:
+    helm.sh/resource-policy: keep
+    {{- with include "node-agent.annotations" (dict "ctx" . "extra" .Values.namespace.annotations) }}
+    {{- . | nindent 4 }}
+    {{- end }}
+{{- end }}

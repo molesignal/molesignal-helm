@@ -1,0 +1,196 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "node-agent chart values",
+  "type": "object",
+  "additionalProperties": false,
+  "$defs": {
+    "stringMap": { "type": "object", "additionalProperties": { "type": "string" } },
+    "quantity": {
+      "type": "string",
+      "pattern": "^[0-9]+(\\.[0-9]+)?(Ki|Mi|Gi|Ti|Pi|Ei|k|M|G|T|P|E|m)?$"
+    },
+    "objectList": { "type": "array", "items": { "type": "object" } },
+    "absolutePath": { "type": "string", "pattern": "^/" },
+    "optionalMount": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "hostPath": { "$ref": "#/$defs/absolutePath" }
+      }
+    },
+    "collectorList": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{0,63}$" },
+      "uniqueItems": true
+    },
+    "deviceList": {
+      "type": ["array", "null"],
+      "items": { "type": "string", "minLength": 1 }
+    }
+  },
+  "properties": {
+    "global": {
+      "type": "object",
+      "properties": {
+        "imageRegistry": { "type": "string" },
+        "imagePullSecrets": { "$ref": "#/$defs/objectList" }
+      }
+    },
+    "nameOverride": { "type": "string" },
+    "fullnameOverride": { "type": "string" },
+    "commonLabels": { "$ref": "#/$defs/stringMap" },
+    "commonAnnotations": { "$ref": "#/$defs/stringMap" },
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "repository": { "type": "string", "minLength": 1 },
+        "tag": { "type": "string" },
+        "digest": { "type": "string", "pattern": "^(sha256:[a-f0-9]{64})?$" },
+        "pullPolicy": { "enum": ["Always", "IfNotPresent", "Never"] }
+      }
+    },
+    "imagePullSecrets": { "$ref": "#/$defs/objectList" },
+    "endpoint": { "type": "string" },
+    "token": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "value": { "type": "string" },
+        "existingSecret": { "type": "string" },
+        "existingSecretKey": { "type": "string", "pattern": "^[-._a-zA-Z0-9]+$" }
+      }
+    },
+    "enrollment": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "managed": { "type": "boolean" }
+      }
+    },
+    "config": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "logLevel": { "enum": [null, "trace", "debug", "info", "warn", "error"] },
+        "logFormat": { "enum": [null, "text", "json"] },
+        "healthAddr": {
+          "type": ["string", "null"],
+          "pattern": "^(127\\.0\\.0\\.1|localhost|::1):[0-9]{1,5}$"
+        },
+        "shutdownTimeoutMs": { "type": ["integer", "null"], "minimum": 1 },
+        "collectors": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "allow": { "$ref": "#/$defs/collectorList" },
+            "deny": { "$ref": "#/$defs/collectorList" }
+          }
+        },
+        "dropwatchFilter": { "type": ["string", "null"] },
+        "netdev": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "eventsDevices": { "$ref": "#/$defs/deviceList" },
+            "hwDevices": { "$ref": "#/$defs/deviceList" },
+            "dcbDevices": { "$ref": "#/$defs/deviceList" }
+          }
+        },
+        "legacyMetrics": { "type": ["boolean", "null"] },
+        "extra": {
+          "type": "object",
+          "propertyNames": { "pattern": "^MS_[A-Z0-9_]+$" },
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    },
+    "hostMounts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "machineId": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "hostPath": { "$ref": "#/$defs/absolutePath" }
+          }
+        },
+        "osRelease": { "$ref": "#/$defs/optionalMount" },
+        "btf": { "$ref": "#/$defs/optionalMount" },
+        "tracefs": { "$ref": "#/$defs/optionalMount" },
+        "debugfs": { "$ref": "#/$defs/optionalMount" },
+        "cgroup": { "$ref": "#/$defs/optionalMount" },
+        "kmsg": { "$ref": "#/$defs/optionalMount" },
+        "dockerSocket": { "$ref": "#/$defs/optionalMount" }
+      }
+    },
+    "state": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "hostPath": { "$ref": "#/$defs/absolutePath" }
+      }
+    },
+    "securityContext": { "type": "object" },
+    "podSecurityContext": { "type": "object" },
+    "readinessProbe": { "type": "object" },
+    "livenessProbe": { "type": "object" },
+    "resources": { "type": "object" },
+    "updateStrategy": {
+      "type": "object",
+      "properties": {
+        "type": { "enum": ["RollingUpdate", "OnDelete"] },
+        "rollingUpdate": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "maxUnavailable": { "type": ["integer", "string"] },
+            "maxSurge": { "type": ["integer", "string"] }
+          }
+        }
+      }
+    },
+    "terminationGracePeriodSeconds": { "type": "integer", "minimum": 1 },
+    "priorityClassName": { "type": "string" },
+    "priorityClass": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "create": { "type": "boolean" },
+        "value": { "type": "integer", "minimum": -2147483648, "maximum": 1000000000 },
+        "preemptionPolicy": { "enum": ["PreemptLowerPriority", "Never"] }
+      }
+    },
+    "namespace": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "create": { "type": "boolean" },
+        "labels": { "$ref": "#/$defs/stringMap" },
+        "annotations": { "$ref": "#/$defs/stringMap" }
+      }
+    },
+    "serviceAccount": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "create": { "type": "boolean" },
+        "name": { "type": "string" },
+        "annotations": { "$ref": "#/$defs/stringMap" },
+        "automount": { "type": "boolean" }
+      }
+    },
+    "extraEnv": { "$ref": "#/$defs/objectList" },
+    "extraEnvFrom": { "$ref": "#/$defs/objectList" },
+    "extraVolumes": { "$ref": "#/$defs/objectList" },
+    "extraVolumeMounts": { "$ref": "#/$defs/objectList" },
+    "podAnnotations": { "$ref": "#/$defs/stringMap" },
+    "podLabels": { "$ref": "#/$defs/stringMap" },
+    "nodeSelector": { "$ref": "#/$defs/stringMap" },
+    "tolerations": { "$ref": "#/$defs/objectList" },
+    "affinity": { "type": "object" },
+    "extraObjects": { "$ref": "#/$defs/objectList" }
+  }
+}

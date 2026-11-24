@@ -1,0 +1,53 @@
+apiVersion: v2
+name: node-agent
+description: >-
+  Linux node observability for MoleSignal. Runs molesignal-node-agent as a DaemonSet that
+  collects kernel events, host metrics and profiles with eBPF on every node and sends them
+  over OTLP to a MoleSignal intake.
+type: application
+
+# The chart is versioned on its own (SemVer), apart from the other charts and from the
+# agent. Bump `version` for every chart change. `appVersion` is the default image tag:
+# unlike the server and the Probe Agent, the node agent is released with SemVer tags, so
+# the chart pins one. See docs/versioning.md.
+version: 0.1.0
+appVersion: "0.1.0"
+
+kubeVersion: ">=1.27.0-0"
+
+home: https://www.molesignal.com
+icon: https://www.molesignal.com/icon-512.png
+# The first entry becomes the `org.opencontainers.image.source` label of the OCI
+# artifact, which is what ties the package on ghcr.io to this repository.
+sources:
+  - https://github.com/molesignal/molesignal-helm
+  - https://github.com/molesignal/molesignal-node-agent
+keywords:
+  - observability
+  - ebpf
+  - node
+  - kernel
+  - opentelemetry
+maintainers:
+  - name: MoleSignal
+    url: https://github.com/molesignal
+
+annotations:
+  artifacthub.io/category: monitoring-logging
+  artifacthub.io/license: Apache-2.0
+  artifacthub.io/containsSecurityUpdates: "false"
+  artifacthub.io/prerelease: "true"
+  artifacthub.io/images: |
+    - name: molesignal-node-agent
+      image: molesignal/molesignal-node-agent:0.1.0
+      platforms:
+        - linux/amd64
+        - linux/arm64
+  artifacthub.io/links: |
+    - name: Documentation
+      url: https://github.com/molesignal/molesignal-helm/tree/main/charts/node-agent
+    - name: Agent
+      url: https://github.com/molesignal/molesignal-node-agent
+  artifacthub.io/changes: |
+    - kind: added
+      description: First release, a DaemonSet in standalone token mode

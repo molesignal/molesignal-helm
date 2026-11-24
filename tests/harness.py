@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parent.parent
 # workflow; mutate.py uses them to check that the tests fail when one of those is broken.
 CHART = Path(os.environ.get("MOLESIGNAL_CHART") or ROOT / "charts" / "molesignal").resolve()
 PROBE_CHART = Path(os.environ.get("PROBE_AGENT_CHART") or ROOT / "charts" / "probe-agent").resolve()
+NODE_CHART = Path(os.environ.get("NODE_AGENT_CHART") or ROOT / "charts" / "node-agent").resolve()
 CI_INSTALL = Path(os.environ.get("CI_INSTALL_SCRIPT") or ROOT / "scripts" / "ci-install.sh").resolve()
 RELEASE_WORKFLOW = Path(os.environ.get("RELEASE_WORKFLOW") or ROOT / ".github" / "workflows" / "release.yaml").resolve()
 ENV = {**os.environ, "KUBECONFIG": os.devnull}
@@ -29,7 +30,7 @@ ENV = {**os.environ, "KUBECONFIG": os.devnull}
 DNS_LABEL = re.compile(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$")
 LABEL_VALUE = re.compile(r"^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$")
 
-WORKLOADS = ("Deployment", "StatefulSet")
+WORKLOADS = ("Deployment", "StatefulSet", "DaemonSet")
 
 
 class Results:

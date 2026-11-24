@@ -9,6 +9,7 @@ OpenTelemetry 的可观测性平台：日志、指标、链路追踪共用一套
 | --- | --- |
 | [`charts/molesignal`](charts/molesignal) | MoleSignal 本体：单 Pod 的 `standalone` 模式，或拆成 router / intake / querier / compactor / alert 的 `distributed` 模式；可选内置 PostgreSQL 与 RustFS，仅用于体验 |
 | [`charts/probe-agent`](charts/probe-agent) | Probe Agent：从私有地点执行拨测，连接本集群或其他地方的 MoleSignal 服务端 |
+| [`charts/node-agent`](charts/node-agent) | 节点 agent：以 DaemonSet 在每个 Linux 节点上用 eBPF 采集内核事件、主机指标与 profile，经 OTLP 发往 MoleSignal intake |
 
 每个 Chart 的版本都独立于另一个 Chart 和应用版本，规则见 [版本策略](docs/versioning.md)（英文）。
 
@@ -41,6 +42,8 @@ PostgreSQL 17 和 S3 存储桶，写法见 [`examples/production.yaml`](examples
 
 要从网络内部执行拨测，接着安装 Probe Agent。它需要服务端的地点和 Token，服务端也要有一个 Agent 能连到的地址，
 见 [`charts/probe-agent`](charts/probe-agent/README.md)（英文）。
+
+要观测集群节点本身，用 intake 地址和 token 安装节点 agent，见 [`charts/node-agent`](charts/node-agent/README.md)（英文）。
 
 ## 几点要先知道
 

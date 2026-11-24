@@ -1,0 +1,304 @@
+# Default values for the node-agent chart.
+#
+# Comments that start with `# --` document the key below them and feed the
+# generated table in README.md (see scripts/gen-values-doc.py).
+#
+# There is no working default: the agent has to be told where to send, and with which
+# token. Set `endpoint` and `token`. The README walks through it, and explains every host
+# namespace, mount and capability below; so does deploy/kubernetes/README.md in the
+# agent's repository, which this chart mirrors.
+
+global:
+  # -- Replace the registry host of the image (mirror or air-gapped registry).
+  # `molesignal/molesignal-node-agent` becomes `<imageRegistry>/molesignal/molesignal-node-agent`.
+  imageRegistry: ""
+  # -- Pull secrets for every pod the chart creates. Merged with `imagePullSecrets`.
+  imagePullSecrets: []
+
+# -- Override the chart name used in resource names and labels.
+nameOverride: ""
+# -- Override the prefix of every resource name (default: the release name, followed by
+# the chart name unless the release name contains it). Kept to 52 characters.
+fullnameOverride: ""
+# -- Labels added to every resource. They never reach the DaemonSet's selector.
+commonLabels: {}
+# -- Annotations added to every resource.
+commonAnnotations: {}
+
+image:
+  # -- Agent image, published for linux/amd64 (x86_64) and linux/arm64 (aarch64) under one
+  # multi-architecture tag.
+  repository: molesignal/molesignal-node-agent
+  # -- Image tag. Empty means the chart's `appVersion`.
+  tag: ""
+  # -- Image digest (`sha256:...`). When set it is used together with the tag.
+  digest: ""
+  # -- Image pull policy. The default tag is a fixed release, so pulling once is enough.
+  pullPolicy: IfNotPresent
+# -- Pull secrets, as a list of `{name: ...}`.
+imagePullSecrets: []
+
+# -- OTLP intake the agent sends to (`MS_ENDPOINT`), `http://` or `https://`, for example
+# `https://intake.molesignal.example`. Required. With `hostNetwork` the pod still resolves
+# cluster names (`dnsPolicy: ClusterFirstWithHostNet`), so an intake Service in this
+# cluster works too.
+endpoint: ""
+
+token:
+  # -- Bearer token, stored in a Secret the chart creates. Prefer `existingSecret`: a
+  # value given here also ends up in the release's history. Required, unless
+  # `existingSecret` is set.
+  value: ""
+  # -- Existing Secret that holds the token, for example one made with
+  # `kubectl create secret generic molesignal-node-agent-token --from-file=token=./agent.token`.
+  # The agent re-reads the file while it runs, so a new token in the Secret is picked up
+  # without a restart.
+  existingSecret: ""
+  # -- Key of the token inside that Secret (the Secret the chart creates uses it too). It is
+  # mounted as `/etc/molesignal-node-agent/token`, readable by its owner only (0400): the
+  # agent refuses a token file that its group or others can read.
+  existingSecretKey: token
+
+enrollment:
+  # -- Reserved for managed enrollment (an mTLS identity and configuration pushed from the
+  # control plane). The control protocol does not exist yet, so the agent only supports
+  # standalone token mode and the chart refuses `true`. Off by default, and nothing else
+  # changes when it is.
+  managed: false
+
+# Settings of the agent, written into the ConfigMap as `MS_*` environment variables. A
+# value of `null` leaves the variable out, so the agent uses its own default. The agent
+# checks every value before it starts and refuses to run with a bad one; the schema of
+# this chart catches the obvious mistakes earlier. `MS_TOKEN_PATH` and `MS_STATE_DIR`
+# follow the mounts below and are not set here.
+config:
+  # -- `MS_LOG_LEVEL`: `trace`, `debug`, `info`, `warn` or `error`. `null` is the agent's
+  # default, `info`.
+  logLevel: null
+  # -- `MS_LOG_FORMAT`: `text` or `json`.
+  logFormat: json
+  # -- `MS_HEALTH_ADDR`: where `/healthz` and `/readyz` listen. Loopback only (`127.0.0.1`,
+  # `localhost` or `::1`, and a port). With `hostNetwork` that is the node's loopback: the
+  # port must be free on every node, and the probes reach it through `exec`, from the same
+  # network namespace.
+  healthAddr: "127.0.0.1:9102"
+  # -- `MS_SHUTDOWN_TIMEOUT_MS`: how long the agent spends sending what is left after
+  # `SIGTERM`. `null` is the agent's default, 10000. Must stay below
+  # `terminationGracePeriodSeconds`; what is not sent stays in the state directory and goes
+  # out after the next start.
+  shutdownTimeoutMs: null
+  collectors:
+    # -- `MS_COLLECTORS_ALLOW`: collectors to run, instead of all the default ones. Empty
+    # runs the defaults. `molesignal-node-agent capabilities` lists them.
+    allow: []
+    # -- `MS_COLLECTORS_DENY`: collectors not to run. A name cannot be in both lists.
+    deny: []
+  # -- `MS_DROPWATCH_FILTER`: which dropped packets the dropwatch collector reports, in a
+  # subset of tcpdump syntax (`tcp and port 443`, `not arp`; no byte offsets like `tcp[13]`).
+  # `""` reports every drop; `null` is the agent's default, `tcp`.
+  dropwatchFilter: tcp
+  netdev:
+    # -- `MS_NETDEV_EVENTS_DEVICES`: network interfaces the netdev_events collector watches,
+    # each a regular expression that has to match the whole name (`eth0`, `en.*`), without
+    # commas. `null` watches every interface; `[]` watches none.
+    eventsDevices: null
+    # -- `MS_NETDEV_HW_DEVICES`: the same for netdev_hw.
+    hwDevices: null
+    # -- `MS_NETDEV_DCB_DEVICES`: the same for netdev_dcb.
+    dcbDevices: null
+  # -- `MS_COMPATIBILITY_LEGACY_METRICS`: also send every metric under its old
+  # `huatuo_bamai_*` name, for dashboards that still use them. A transition aid that the
+  # agent will remove (see `MS_COMPATIBILITY_LEGACY_METRICS_REMOVED_AT`). `null` is the
+  # agent's default, off.
+  legacyMetrics: null
+  # -- Any other `MS_*` variable, as `NAME: "value"`, for example
+  # `MS_SPOOL_QUOTA_BYTES: "2147483648"`, `MS_EXPORT_TIMEOUT_MS`, `MS_BATCH_MAX_RECORDS`,
+  # `MS_RETRY_*`, `MS_STREAM_NAME`. The agent's README lists them. Never a secret: this is a
+  # ConfigMap. The variables the chart sets itself are refused here.
+  extra: {}
+
+# Directories and files of the node that the agent reads. Each one has a fixed place in the
+# container, which is what the agent looks for, and a `hostPath` that you can change when
+# your nodes keep it elsewhere. The optional ones can be switched off with `enabled: false`;
+# the agent then reports the collectors that need them as degraded and keeps going.
+hostMounts:
+  # -- `/etc/machine-id`, read-only: the node's identity (`host.id`). Required, and cannot
+  # be switched off: without it every pod reads the machine-id of the image, and all nodes
+  # report as the same host.
+  machineId:
+    hostPath: /etc/machine-id
+  # -- `/etc/os-release`, read-only: the node's distribution (`os.version`). Off, the agent
+  # reports the image's distribution instead.
+  osRelease:
+    enabled: true
+    hostPath: /etc/os-release
+  # -- `/sys/kernel/btf`, read-only: kernel type information for the CO-RE BPF programs
+  # (oom, dropwatch, tcp_retransmit and others). Off, those collectors are degraded.
+  btf:
+    enabled: true
+    hostPath: /sys/kernel/btf
+  # -- `/sys/kernel/tracing`, read-only: where libbpf looks up tracepoint ids. Off (and
+  # without `debugfs`), tracepoint collectors are degraded.
+  tracefs:
+    enabled: true
+    hostPath: /sys/kernel/tracing
+  # -- `/sys/kernel/debug`, read-only: the same through debugfs, which is the only path on
+  # some kernels. Can go where `/sys/kernel/tracing` exists, or where the node's AppArmor
+  # profile blocks it anyway.
+  debugfs:
+    enabled: true
+    hostPath: /sys/kernel/debug
+  # -- `/sys/fs/cgroup`, read-only: container discovery, cgroup metrics, `memory.current`.
+  # Off, nothing has a container dimension.
+  cgroup:
+    enabled: true
+    hostPath: /sys/fs/cgroup
+  # -- `/dev/kmsg`, read-only: the kernel's SysRq stack output for hung-task and soft-lockup
+  # events. Off, those events still go out, with an error text for the stacks.
+  kmsg:
+    enabled: true
+    hostPath: /dev/kmsg
+  # -- `/var/run/docker.sock`, read-only: container names on Docker nodes. Harmless where it
+  # does not exist (containerd nodes); switch it off to keep the socket out of the pod.
+  # Off, container names are missing on Docker nodes.
+  dockerSocket:
+    enabled: true
+    hostPath: /var/run/docker.sock
+
+state:
+  # -- Directory of the node for the agent's state (`MS_STATE_DIR`, mounted read-write at
+  # `/var/lib/molesignal-node-agent`): the write-ahead spool of batches not yet delivered and
+  # the cool-down state of AutoTracing, so that a new pod sends what the old one could not.
+  # Created when missing. Give a second release on the same nodes a directory of its own.
+  hostPath: /var/lib/molesignal-node-agent
+
+# -- Container security context. Not privileged: every capability is dropped and only
+# these are added back. Running as root is needed for BPF and for reading other processes'
+# `/proc`, and the root filesystem stays read-only. For SELinux add
+# `seLinuxOptions: {type: spc_t}`; where the node's AppArmor profile blocks BPF or debugfs,
+# `appArmorProfile: {type: Unconfined}`. Full SysRq stacks need `privileged: true`, because
+# runtimes mount `/proc/sysrq-trigger` read-only otherwise. Lists replace, so a changed
+# `capabilities.add` has to repeat the ones it keeps.
+securityContext:
+  privileged: false
+  runAsUser: 0
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+  # Some runtimes' default seccomp profile blocks bpf() and perf_event_open().
+  seccompProfile:
+    type: Unconfined
+  capabilities:
+    drop: ["ALL"]
+    add:
+      - BPF              # load and attach BPF programs (kernel 5.8+)
+      - PERFMON          # perf buffers and perf events (kernel 5.8+)
+      - SYS_ADMIN        # BPF below kernel 5.8; setns for netns cookies; /proc/<pid>/stack
+      - SYS_RESOURCE     # the BPF memlock limit of older kernels
+      - SYS_PTRACE       # read other processes' /proc entries
+      - DAC_READ_SEARCH  # the same, past file permissions
+      - NET_ADMIN        # rtnetlink, devlink and qdisc queries
+      - SYSLOG           # read /dev/kmsg when kernel.dmesg_restrict=1
+      - KILL             # end the process groups of diagnostic tools the agent runs
+
+# -- Pod security context. Empty on purpose, and `fsGroup` is refused: with it the kubelet
+# makes the token group-readable, and the agent does not start with such a token.
+podSecurityContext: {}
+
+# -- Readiness probe: `/readyz` through the agent's own client, because the endpoint only
+# listens on loopback. Not ready while it shuts down.
+readinessProbe:
+  exec:
+    command: ["molesignal-node-agent", "health-check", "--endpoint", "readyz"]
+  periodSeconds: 10
+  failureThreshold: 3
+# -- Liveness probe: `/healthz`, the same way.
+livenessProbe:
+  exec:
+    command: ["molesignal-node-agent", "health-check", "--endpoint", "healthz"]
+  initialDelaySeconds: 30
+  periodSeconds: 20
+  failureThreshold: 3
+
+# -- Resource requests and limits of the agent.
+resources:
+  requests:
+    cpu: 50m
+    memory: 96Mi
+  limits:
+    memory: 512Mi
+
+# -- How a new version reaches the nodes. One node at a time by default; a pod's unsent
+# batches stay in the state directory and the next pod on that node sends them.
+updateStrategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxUnavailable: 1
+# -- Seconds between `SIGTERM` and `SIGKILL`. Has to be longer than the agent's shutdown
+# window (`config.shutdownTimeoutMs`, 10 s by default).
+terminationGracePeriodSeconds: 30
+
+# -- Priority class of the pods, so that the agent is the last thing evicted from a node
+# under pressure. Ignored when `priorityClass.create` is true. Some managed clusters only
+# admit the `system-*` classes in namespaces with a ResourceQuota that names them; there,
+# create such a quota, set `priorityClass.create`, or set this to `""`.
+priorityClassName: system-node-critical
+priorityClass:
+  # -- Create a PriorityClass named after the release and give it to the pods instead of
+  # `priorityClassName`. PriorityClasses are cluster-wide.
+  create: false
+  # -- Its value. Below the `system-*` classes (2000000000 and up).
+  value: 1000000
+  # -- `PreemptLowerPriority` or `Never`.
+  preemptionPolicy: PreemptLowerPriority
+
+namespace:
+  # -- Create the release's namespace with the chart, labelled for the `privileged` Pod
+  # Security level, which the agent needs: `baseline` already refuses host namespaces, host
+  # paths and added capabilities. Use instead of `--create-namespace`, and only for a
+  # namespace that does not exist yet. The namespace is kept on uninstall. When false, label
+  # the namespace yourself (the install notes say how).
+  create: false
+  # -- Labels of that namespace.
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
+  # -- Annotations of that namespace.
+  annotations: {}
+
+serviceAccount:
+  # -- Create a service account.
+  create: true
+  # -- Name of the service account. Defaults to the full name.
+  name: ""
+  # -- Annotations for the service account.
+  annotations: {}
+  # -- Mount the service account token into the pods. The agent does not call the
+  # Kubernetes API (pod names come from the kubelet's read-only port), so it is off.
+  automount: false
+
+# -- Extra environment variables for the agent, for example a proxy. Set `MS_*` variables
+# in `config` instead.
+extraEnv: []
+# -- Extra `envFrom` sources for the agent.
+extraEnvFrom: []
+# -- Extra volumes for the pods.
+extraVolumes: []
+# -- Extra volume mounts for the agent.
+extraVolumeMounts: []
+
+# -- Annotations added to the pods.
+podAnnotations: {}
+# -- Labels added to the pods.
+podLabels: {}
+# -- Node selector. The agent is Linux-only (eBPF), and the tolerations below would also
+# let it onto Windows nodes.
+nodeSelector:
+  kubernetes.io/os: linux
+# -- Tolerations. Every taint by default, so that tainted nodes are observed too.
+tolerations:
+  - operator: Exists
+# -- Affinity.
+affinity: {}
+
+# -- Additional Kubernetes manifests to deploy with the release. Each item is a
+# complete object, and may use template expressions.
+extraObjects: []

@@ -10,6 +10,40 @@ breaking changes; they are collected under **Upgrade notes**.
 
 ## [Unreleased]
 
+## [node-agent 0.1.0] - Unreleased
+
+First release. Deploys `molesignal/molesignal-node-agent:0.1.0`, a multi-architecture image for
+linux/amd64 and linux/arm64, written against `deploy/kubernetes/node-agent.yaml` and the `MS_*`
+variables of molesignal-node-agent as they stood on 2026-11-24, on top of its commit `0f9bc77` and not
+yet committed there. Do not release this chart before that image
+is published. Neither the chart nor the manifest has been installed on a real cluster yet, and CI does
+not install it.
+
+### Added
+
+- The node agent as a DaemonSet in standalone token mode, equivalent to the agent's manifest: host PID
+  and network namespaces, not privileged, every capability dropped but `BPF`, `PERFMON`, `SYS_ADMIN`,
+  `SYS_RESOURCE`, `SYS_PTRACE`, `DAC_READ_SEARCH`, `NET_ADMIN`, `SYSLOG` and `KILL`, a read-only root, the
+  same probes, resources and host mounts, `system-node-critical`, every taint tolerated, one node at a
+  time.
+- `MS_*` settings from values into a ConfigMap (`endpoint`, `config.*`, `config.extra`), where `null`
+  leaves a variable to the agent's default and an empty string is kept. A change rolls the pods.
+- The token from an existing Secret with any key, or from `token.value`; mounted owner-only, as the
+  agent requires. No default.
+- Every host mount but `machine-id` can be switched off, and every host path moved.
+- Optional: the namespace with the `privileged` Pod Security label, a PriorityClass of the release's
+  own. `enrollment.managed` is reserved and refused until the agent supports it.
+- Differences from the manifest, each for a reason given in `docs/architecture.md`: a release-scoped
+  selector, `kubernetes.io/os: linux`, a config checksum, and the token mapped to its file with `items`.
+- Guards against values the agent would refuse or that would break it (`fsGroup`, a grace period
+  shorter than the agent's shutdown window, a collector both allowed and denied), a JSON schema,
+  install notes, render tests and mutation tests.
+
+### Upgrade notes
+
+None: this is the first release. Coming from the manifest, delete its objects (but the token Secret)
+before installing: the selector differs, and Helm does not adopt objects it did not create.
+
 ## [molesignal 0.3.0] - Unreleased
 
 Needs an application release newer than 26.4.0.0-alpha: the first that keeps its write-ahead log in
