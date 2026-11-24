@@ -10,14 +10,13 @@ breaking changes; they are collected under **Upgrade notes**.
 
 ## [Unreleased]
 
-## [node-agent 0.1.0] - Unreleased
+## [node-agent 0.1.0] - 2026-11-24
 
 First release. Deploys `molesignal/molesignal-node-agent:0.1.0`, a multi-architecture image for
 linux/amd64 and linux/arm64, written against `deploy/kubernetes/node-agent.yaml` and the `MS_*`
 variables of molesignal-node-agent as they stood on 2026-11-24, on top of its commit `0f9bc77` and not
-yet committed there. Do not release this chart before that image
-is published. Neither the chart nor the manifest has been installed on a real cluster yet, and CI does
-not install it.
+yet committed there. Neither the chart nor the manifest has been installed on a real cluster yet, and
+CI does not install it.
 
 ### Added
 
